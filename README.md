@@ -19,9 +19,12 @@ dotfiles.
 ## Install
 
 ```bash
-uv tool install --from . bukzor-tools    # everything, shims into ~/.local/bin
+uv tool install .                             # everything, shims into ~/.local/bin
 uv tool install ./packages/upstream-replies   # or just one
 ```
+
+Upgrade after pulling: `uv tool upgrade bukzor-tools` (or
+`uv tool install . --force` from a working copy).
 
 ## Develop
 
@@ -36,7 +39,9 @@ uv run pre-commit run --all-files
 Copy the shape of the smallest existing package: a `pyproject.toml`
 (hatchling, `packages = ["lib/NAME"]`, a `[project.scripts]` entry), the
 module under `lib/`, and `*_test.py` beside the code it tests. Add it to
-the meta-package's `dependencies` and `[tool.uv.sources]`.
+the meta-package's `dependencies`, `[tool.uv.sources]`, and
+`[project.scripts]` (that last one is what puts the command on PATH for
+people who installed the meta-package).
 
 ## Graduation
 

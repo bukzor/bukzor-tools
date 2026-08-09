@@ -8,6 +8,12 @@ authors = [{ name = "Buck Evan", email = "workitharder+pypi@gmail.com" }]
 requires-python = ">=3.13"
 dependencies = ["google-issuetracker", "upstream-replies"]
 
+[project.scripts]
+# Re-exported from the member packages, so `uv tool install bukzor-tools`
+# yields every command: uv only creates shims for the named package.
+google-issuetracker = "google_issuetracker.cli:main"
+upstream-replies = "upstream_replies.cli:main"
+
 [project.urls]
 Repository = "https://github.com/bukzor/bukzor-tools"
 

@@ -11,10 +11,11 @@ dotfiles.
 
 ## Tools
 
-| package                                                    | command                | what it does                                                 |
-| ---------------------------------------------------------- | ---------------------- | ------------------------------------------------------------ |
-| [google-issuetracker](packages/google-issuetracker)         | `google-issuetracker`  | search Google's public issue trackers (Buganizer) anonymously |
-| [upstream-replies](packages/upstream-replies)               | `upstream-replies`     | nag when bug reports I filed get replies                      |
+| package                                                     | command                                                                      | what it does                                                  |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| [claude-code-archeology](packages/claude-code-archeology)   | `claude-search`, `claude-inventory`, `claude-branch-list`, `-branch-extract` | find, resume and recover past Claude Code sessions            |
+| [google-issuetracker](packages/google-issuetracker)         | `google-issuetracker`                                                        | search Google's public issue trackers (Buganizer) anonymously |
+| [upstream-replies](packages/upstream-replies)               | `upstream-replies`                                                           | nag when bug reports I filed get replies                      |
 
 ## Install
 

@@ -1,0 +1,38 @@
+# yaml-language-server: $schema=https://json.schemastore.org/pre-commit-config.json
+
+repos:
+  # Local hooks so dev tooling and pre-commit always run the same versions
+  - repo: local
+    hooks:
+      - id: pyupgrade
+        name: pyupgrade
+        entry: uv run pyupgrade --py313-plus
+        language: system
+        types: [python]
+
+      - id: isort
+        name: isort
+        entry: uv run isort
+        language: system
+        types: [python]
+
+      - id: black
+        name: black
+        entry: uv run black
+        language: system
+        types: [python]
+
+      # Whole-repo checks, after formatting for cleaner output
+      - id: pyright
+        name: pyright
+        entry: uv run pyright
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      - id: pytest
+        name: pytest
+        entry: uv run pytest -q
+        language: system
+        types: [python]
+        pass_filenames: false

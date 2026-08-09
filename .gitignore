@@ -1,0 +1,20 @@
+# normally I don't care to version-control uv.lock till later in the project
+uv.lock
+
+# Python
+__pycache__/
+*.py[cod]
+build/
+dist/
+*.egg-info/
+.venv/
+
+# Testing
+.hypothesis/
+.pytest_cache/
+
+# Node.js
+node_modules/
+
+# dirty hacks
+trash/

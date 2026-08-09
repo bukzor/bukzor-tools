@@ -1,0 +1,58 @@
+[project]
+name = "bukzor-tools"
+version = "0.1.0"
+description = "Meta-package: brings in every tool in this repo"
+readme = "README.md"
+license = "Apache-2.0"
+authors = [{ name = "Buck Evan", email = "workitharder+pypi@gmail.com" }]
+requires-python = ">=3.13"
+dependencies = ["google-issuetracker", "upstream-replies"]
+
+[project.urls]
+Repository = "https://github.com/bukzor/bukzor-tools"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+# no code of its own -- this package exists to depend on the others
+bypass-selection = true
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[tool.uv.sources]
+google-issuetracker = { workspace = true }
+upstream-replies = { workspace = true }
+
+[dependency-groups]
+dev = [
+  "black>=25.1.0",
+  "isort>=5.13.2",
+  "pre-commit>=4.3.0",
+  "pyright>=1.1.405",
+  "pytest>=8.4.2",
+  "pyupgrade>=3.19.0",
+]
+
+[tool.pytest.ini_options]
+addopts = "--doctest-modules"
+python_classes = ["Describe*", "When*", "Test*"]
+python_functions = ["it_*", "test_*"]
+
+[tool.pyright]
+typeCheckingMode = "strict"
+analyzeUnannotatedFunctions = true
+reportIncompatibleMethodOverride = "error"
+pythonVersion = "3.13"
+enableTypeIgnoreComments = true
+reportPrivateUsage = "warning"
+reportConstantRedefinition = "error"
+reportIncompatibleVariableOverride = "error"
+reportMissingImports = "error"
+reportMissingTypeStubs = false
+exclude = [".venv", "__pycache__", "node_modules", "trash"]
+
+[tool.isort]
+profile = "black"

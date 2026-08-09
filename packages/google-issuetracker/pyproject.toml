@@ -1,0 +1,22 @@
+[project]
+name = "google-issuetracker"
+version = "0.1.0"
+description = "Search Google's public issue trackers (Buganizer) anonymously"
+license = "Apache-2.0"
+authors = [{ name = "Buck Evan", email = "workitharder+pypi@gmail.com" }]
+requires-python = ">=3.13"
+dependencies = []
+
+[project.scripts]
+google-issuetracker = "google_issuetracker.cli:main"
+
+[project.urls]
+Repository = "https://github.com/bukzor/bukzor-tools"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["lib/google_issuetracker"]
+exclude = ["**/*_test.py"]

@@ -2,7 +2,11 @@
 name = "claude-code-slug"
 version = "0.1.0"
 description = "Claude Code's projects/<slug>/ path encoding, as a function"
+readme = "README.md"
 license = "Apache-2.0"
+# Apache-2.0 section 4 wants the license to travel with the artifact, and a
+# wheel is not the repo -- so the file is copied in beside the package.
+license-files = ["LICENSE"]
 authors = [{ name = "Buck Evan", email = "workitharder+pypi@gmail.com" }]
 requires-python = ">=3.13"
 dependencies = []

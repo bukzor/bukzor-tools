@@ -6,11 +6,18 @@ readme = "README.md"
 license = "Apache-2.0"
 authors = [{ name = "Buck Evan", email = "workitharder+pypi@gmail.com" }]
 requires-python = ">=3.13"
-dependencies = ["claude-code-archeology", "google-issuetracker", "upstream-replies"]
+dependencies = [
+  "claude-code-archeology",
+  "claude-code-slug",
+  "google-issuetracker",
+  "upstream-replies",
+]
 
 [project.scripts]
 # Re-exported from the member packages, so `uv tool install bukzor-tools`
 # yields every command: uv only creates shims for the named package.
+claude-slug = "claude_code_slug.slug:main"
+claude-path = "claude_code_slug.path:main"
 claude-search = "claude_code_archeology.search:main"
 claude-inventory = "claude_code_archeology.inventory:main"
 claude-branch-list = "claude_code_archeology.branch_list:main"
@@ -34,6 +41,7 @@ members = ["packages/*"]
 
 [tool.uv.sources]
 claude-code-archeology = { workspace = true }
+claude-code-slug = { workspace = true }
 google-issuetracker = { workspace = true }
 upstream-replies = { workspace = true }
 

@@ -1,0 +1,72 @@
+name: release-pypi
+
+# One registry per workflow, per least-privilege: a trusted publisher binds
+# (owner, repo, workflow-file, environment), so this file *is* the grant, and
+# PyPI and npm are different authorities. Two packages in one repo are not --
+# whoever can edit this file can edit the other package's pyproject anyway, so
+# splitting per package narrows nothing.
+#
+# Which package, then, comes from the tag: `<dist>-v<version>`, e.g.
+# `claude-code-slug-v0.1.0`. A new member needs a trusted publisher and a tag,
+# not an edit to this file.
+on:
+  push:
+    tags: ["*-v*"]
+
+  # An upload cannot be taken back; a dispatch can. Build any member on demand
+  # to exercise everything the tag would, short of the upload itself.
+  workflow_dispatch:
+    inputs:
+      package:
+        description: package to build and check, without uploading it
+        required: true
+
+jobs:
+  pypi:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      # required for PyPI trusted publishing (OIDC)
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+
+      - name: the tag names the package, or the dispatch does
+        env:
+          dispatched: ${{ inputs.package }}
+        run: |
+          set -euo pipefail
+          if [ -n "$dispatched" ]; then
+            echo "package=$dispatched" >>"$GITHUB_ENV"
+          else
+            echo "package=${GITHUB_REF_NAME%-v*}" >>"$GITHUB_ENV"
+            echo "version=${GITHUB_REF_NAME##*-v}" >>"$GITHUB_ENV"
+          fi
+
+      - run: uv build --package "$package"
+
+      # A release is immutable, so a tag that disagrees with the version in
+      # pyproject.toml must fail here rather than upload the wrong number.
+      - name: the tag must name the version that was built
+        if: github.event_name == 'push'
+        run: ls "dist/${package//-/_}-${version}.tar.gz"
+
+      # The one failure a local build cannot predict: whether PyPI recognizes
+      # this (repo, workflow, environment) as a publisher for this package.
+      # Minting a token proves it without uploading anything -- and unlike a
+      # TestPyPI rehearsal, it exercises *this* registration rather than a
+      # different one. The token is never printed; it expires unused.
+      - name: the trusted publisher must already accept us
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          set -euo pipefail
+          jwt="$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=pypi" | jq -r .value)"
+          curl -sS -X POST https://pypi.org/_/oidc/mint-token \
+            -d "{\"token\": \"$jwt\"}" |
+            jq -e '.token | length > 0' >/dev/null
+          echo "PyPI accepts this workflow as a publisher for $package"
+
+      - if: github.event_name == 'push'
+        run: uv publish

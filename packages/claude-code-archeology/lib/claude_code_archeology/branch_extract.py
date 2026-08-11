@@ -11,6 +11,18 @@ Given any record on a branch, this traces *forward* to that branch's tip
 (you can rewind afterward; you cannot fast-forward), collects every record
 belonging to it, and writes them out under a fresh `sessionId`.
 
+`--at` keeps the named record as the tip instead, discarding everything
+after it: the in-session rewind picker only offers *your own* prompts as
+cut points, so a mid-conversation state that no prompt of yours precedes
+-- a subagent's turn, an assistant reply you want answered differently --
+is reachable only by cutting the file here.
+
+`--as-session` re-homes a subagent transcript as a session of its own.
+Subagent records live beside their parent, marked `isSidechain`, and
+`--resume` never offers them; stripping the marks and pointing `cwd` at
+the directory the work belongs in makes the extracted branch resumable
+like any other session.
+
 "Belonging to it" is more than the parent chain -- attachments, file
 snapshots and session settings hang off the chain rather than living in
 it, and most of them belong to *other* branches. See `belongs_to_branch`.
@@ -27,12 +39,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import uuid as uuidlib
 from collections.abc import Iterator
 from pathlib import Path
 
 from . import session as session_mod
+from .inventory import PROJECTS_DIR
 from .session import Node, Record, Session
 
 # Session-scoped settings, keyed by sessionId rather than by message: Claude
@@ -139,8 +153,44 @@ def branch_records(sess: Session, tip: Node) -> list[Node]:
     return kept
 
 
+SIDECHAIN_MARKS = ("isSidechain", "agentId", "attributionAgent")
+"""What marks a record as a subagent's rather than a session's own."""
+
+
+def promoted(rec: Record, cwd: str | None) -> Record:
+    """Pure: one record as a top-level session's, run from `cwd`.
+
+    A subagent inherits its parent's `cwd`, so a promoted branch usually
+    belongs somewhere else -- and the projects/<slug>/ dir it is written
+    to must agree with the `cwd` it claims, or resume looks in the wrong
+    place.
+
+    >>> sorted(promoted({"isSidechain": True, "agentId": "a", "cwd": "/p"},
+    ...                 "/w").items())
+    [('cwd', '/w')]
+    """
+    if cwd is None:
+        return rec
+    kept = {k: v for k, v in rec.items() if k not in SIDECHAIN_MARKS}
+    if "cwd" in kept:
+        kept["cwd"] = cwd
+    return kept
+
+
+def project_dir_for_cwd(cwd: str) -> Path:
+    """The projects/<slug>/ dir holding sessions run from `cwd`.
+
+    Encoding only: the slug maps both '/' and '.' to '-', which is why
+    reading a cwd back out of a dir name is not allowed anywhere here.
+
+    >>> project_dir_for_cwd("/home/u/repo/a.b").name
+    '-home-u-repo-a-b'
+    """
+    return PROJECTS_DIR / re.sub(r"[/.]", "-", cwd)
+
+
 def rewrite(
-    records: Iterator[Node], tip: Node, new_session_id: str
+    records: Iterator[Node], tip: Node, new_session_id: str, cwd: str | None = None
 ) -> Iterator[Record]:
     """Pure: retarget records at a new session, pinning tip as its leaf.
 
@@ -164,7 +214,7 @@ def rewrite(
     """
     pinned = False
     for node in records:
-        rec = dict(node.record)
+        rec = dict(promoted(node.record, cwd))
         if "sessionId" in rec:
             rec["sessionId"] = new_session_id
         if rec.get("type") == "last-prompt":
@@ -199,6 +249,17 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="session id for the new file (default: random uuid4)",
     )
+    p.add_argument(
+        "--at",
+        action="store_true",
+        help="cut at ref instead of its branch tip -- everything after is dropped",
+    )
+    p.add_argument(
+        "--as-session",
+        metavar="CWD",
+        default=None,
+        help="re-home a subagent branch as its own session, run from CWD",
+    )
     return p.parse_args()
 
 
@@ -211,23 +272,30 @@ def main() -> int:
 
     ref = resolve_ref(sess, args.ref)
     assert ref.uuid, (args.path, args.ref)
-    tip = sess.tip_of(ref.uuid)
+    tip = ref if args.at else sess.tip_of(ref.uuid)
     assert tip, (args.path, args.ref)
     new_sid = args.session_id or str(uuidlib.uuid4())
-    out = args.out or session_mod.project_dir_for(sess.path) / f"{new_sid}.jsonl"
+    home = (
+        project_dir_for_cwd(args.as_session)
+        if args.as_session
+        else session_mod.project_dir_for(sess.path)
+    )
+    out = args.out or home / f"{new_sid}.jsonl"
     if out.exists():
         print(f"refusing to overwrite existing: {out}", file=sys.stderr)
         return 2
+    out.parent.mkdir(parents=True, exist_ok=True)
 
     kept = branch_records(sess, tip)
-    count = write_jsonl(rewrite(iter(kept), tip, new_sid), out)
+    count = write_jsonl(rewrite(iter(kept), tip, new_sid, args.as_session), out)
     print(f"wrote {count} of {len(sess.nodes)} records to {out}", file=sys.stderr)
     if tip.line != ref.line:
         print(
             f"branch tip: line {tip.line} {tip.uuid} ({tip.timestamp})", file=sys.stderr
         )
     print(
-        f"resume it:  cd {sess.cwd(among=kept)} && claude --resume {new_sid}",
+        f"resume it:  cd {args.as_session or sess.cwd(among=kept)}"
+        f" && claude --resume {new_sid}",
         file=sys.stderr,
     )
     print(out)

@@ -52,12 +52,16 @@ jobs:
         if: github.event_name == 'push'
         run: ls "dist/${package//-/_}-${version}.tar.gz"
 
-      # The one failure a local build cannot predict: whether PyPI recognizes
-      # this (repo, workflow, environment) as a publisher for this package.
-      # Minting a token proves it without uploading anything -- and unlike a
-      # TestPyPI rehearsal, it exercises *this* registration rather than a
-      # different one. The token is never printed; it expires unused.
-      - name: the trusted publisher must already accept us
+      # Whether PyPI recognizes this (repo, workflow, environment) as a
+      # publisher at all -- something a local build cannot tell you, and unlike
+      # a TestPyPI rehearsal it exercises *this* registration. The token is
+      # never printed; it expires unused.
+      #
+      # It says nothing about $package: the request below carries only the OIDC
+      # token, so PyPI answers for the identity, and one registered member is
+      # enough to mint. For a package's *first* release the definitive test is
+      # the upload -- a missing publisher bounces it, which costs a tag.
+      - name: the trusted publisher must already accept this workflow
         if: github.event_name == 'workflow_dispatch'
         run: |
           set -euo pipefail

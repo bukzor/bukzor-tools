@@ -15,8 +15,10 @@ still there, recoverable by recreating the directory.
 
 ## How It Works
 
-When you `git init` or `git clone` (or `git add` in a fresh repo), hooks
-run `git-localhost-store`, which:
+`git init` copies the hooks in but fires none of them; the first `git
+add`, commit, or checkout in the new repository runs
+`git-localhost-store`, as does the checkout at the end of a `git clone`.
+It:
 
 1. Moves `.git/` into a per-repo store under
    `~/.local/state/git-localhost-store/repos/<encoded-path>/`.

@@ -288,6 +288,12 @@ def main() -> int:
 
     kept = branch_records(sess, tip)
     count = write_jsonl(rewrite(iter(kept), tip, new_sid, args.as_session), out)
+    if args.as_session:
+        print(
+            "promoted: the agent definition does not come with it --"
+            " model, effort and tool access are the resuming session's.",
+            file=sys.stderr,
+        )
     print(f"wrote {count} of {len(sess.nodes)} records to {out}", file=sys.stderr)
     if tip.line != ref.line:
         print(

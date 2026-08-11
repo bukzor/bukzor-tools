@@ -9,6 +9,7 @@ requires-python = ">=3.13"
 dependencies = [
   "claude-code-archeology",
   "claude-code-slug",
+  "git-localhost-store",
   "google-issuetracker",
   "upstream-replies",
 ]
@@ -22,6 +23,8 @@ claude-search = "claude_code_archeology.search:main"
 claude-inventory = "claude_code_archeology.inventory:main"
 claude-branch-list = "claude_code_archeology.branch_list:main"
 claude-branch-extract = "claude_code_archeology.branch_extract:main"
+git-localhost-store = "git_localhost_store.cli:main"
+git-localhost-store-install = "git_localhost_store.install:main"
 google-issuetracker = "google_issuetracker.cli:main"
 upstream-replies = "upstream_replies.cli:main"
 
@@ -42,6 +45,7 @@ members = ["packages/*"]
 [tool.uv.sources]
 claude-code-archeology = { workspace = true }
 claude-code-slug = { workspace = true }
+git-localhost-store = { workspace = true }
 google-issuetracker = { workspace = true }
 upstream-replies = { workspace = true }
 

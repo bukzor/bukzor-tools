@@ -1,0 +1,30 @@
+[project]
+name = "git-localhost-store"
+version = "0.1.0"
+description = "Keep every .git in a central store, so rm -rf cannot lose commits"
+readme = "README.md"
+license = "Apache-2.0"
+# Apache-2.0 section 4 wants the license to travel with the artifact, and a
+# wheel is not the repo -- so the file is copied in beside the package.
+license-files = ["LICENSE"]
+authors = [{ name = "Buck Evan", email = "workitharder+pypi@gmail.com" }]
+requires-python = ">=3.13"
+# Not a convenience: a store directory is *named* by this encoder, so the one
+# that runs has to be the one that named it. Declaring it installs a correct
+# encoder in this venv, and `import claude_code_slug` is what selects it.
+dependencies = ["claude-code-slug"]
+
+[project.scripts]
+git-localhost-store = "git_localhost_store.cli:main"
+git-localhost-store-install = "git_localhost_store.install:main"
+
+[project.urls]
+Repository = "https://github.com/bukzor/bukzor-tools"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["lib/git_localhost_store"]
+exclude = ["**/*_test.py"]

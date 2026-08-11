@@ -60,7 +60,10 @@ jobs:
       # It says nothing about $package: the request below carries only the OIDC
       # token, so PyPI answers for the identity, and one registered member is
       # enough to mint. For a package's *first* release the definitive test is
-      # the upload -- a missing publisher bounces it, which costs a tag.
+      # the upload -- and it is free to fail. A missing publisher bounces with
+      # `400 Non-user identities cannot create new projects`; register it, then
+      # `gh run rerun` this same run. The tag does not move, the version is not
+      # burned.
       - name: the trusted publisher must already accept this workflow
         if: github.event_name == 'workflow_dispatch'
         run: |

@@ -16,6 +16,7 @@ import argparse
 import json
 import sys
 import time
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 
 from .watch import Sighting, acknowledged, add_url, fetch_updated, read_urls, triage
@@ -43,6 +44,25 @@ def checked_recently() -> bool:
     return STATE.exists() and time.time() - STATE.stat().st_mtime < RC_INTERVAL_SEC
 
 
+def format_news(
+    news: Iterable[Sighting], state: Mapping[str, str], rc_mode: bool
+) -> str:
+    """The nag block for stdout: one line per thread, blank-line terminated so
+    it can't run into the next shell prompt. In --rc mode -- where a run
+    doesn't self-acknowledge -- adds a line naming the command that will.
+    """
+    lines = [
+        f"UPSTREAM REPLY? {sighting.url}"
+        f" -- activity {sighting.updated}, acked {state[sighting.url]}"
+        for sighting in news
+    ]
+    if not lines:
+        return ""
+    if rc_mode:
+        lines.append("(ack: run `upstream-replies` without --rc)")
+    return "".join(f"{line}\n" for line in lines) + "\n"
+
+
 def proc_add(url: str) -> int:
     _ = fetch_updated(url)  # reject unwatchable URLs before writing them down
     CONFIG.parent.mkdir(parents=True, exist_ok=True)
@@ -60,11 +80,7 @@ def proc_check(rc_mode: bool) -> int:
     seeded, news = triage(state, sightings)
     for sighting in seeded:
         print(f"watching {sighting.url} (as of {sighting.updated})", file=sys.stderr)
-    for sighting in news:
-        print(
-            f"UPSTREAM REPLY? {sighting.url}"
-            f" -- activity {sighting.updated}, acked {state[sighting.url]}"
-        )
+    print(format_news(news, state, rc_mode), end="")
     # Writing unconditionally also refreshes the mtime the throttle reads.
     write_state(acknowledged(state, seeded if rc_mode else seeded + news))
     return 0 if news else 1

@@ -12,7 +12,10 @@ requires-python = ">=3.13"
 # Not a convenience: a store directory is *named* by this encoder, so the one
 # that runs has to be the one that named it. Declaring it installs a correct
 # encoder in this venv, and `import claude_code_slug` is what selects it.
-dependencies = ["claude-code-slug"]
+dependencies = [
+    "claude-code-slug",
+    "llm-kb",
+]
 
 [project.scripts]
 git-localhost-store = "git_localhost_store.cli:main"
@@ -28,3 +31,6 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["lib/git_localhost_store"]
 exclude = ["**/*_test.py"]
+
+[tool.uv.sources]
+llm-kb = { path = "../../../bukzor-agent-skills/llm-kb", editable = true }

@@ -22,7 +22,7 @@ import re
 import sys
 import time
 from dataclasses import dataclass
-from datetime import datetime, tzinfo
+from datetime import datetime
 from pathlib import Path
 from typing import NamedTuple
 
@@ -30,6 +30,7 @@ from . import session as session_mod
 from .format_short import content_blocks, result_text, truncate
 from .inventory import PROJECTS_DIR, Summary, format_row, format_sh, summarize
 from .session import Node, Session, is_user_text
+from .timefmt import Clock
 
 
 class Match(NamedTuple):
@@ -161,29 +162,29 @@ def find(sess: Session, pattern: re.Pattern[str], roles: frozenset[str]) -> list
 
 def scan(
     projects_dir: Path,
-    cutoff: float | None,
+    cutoff_ns: int | None,
     pattern: re.Pattern[str],
     roles: frozenset[str],
 ) -> list[Hit]:
     """Search every recent-enough session file. Newest first."""
     out: list[Hit] = []
     for path in projects_dir.glob("*/*.jsonl"):
-        mtime = path.stat().st_mtime
-        if cutoff is not None and mtime < cutoff:
+        mtime_ns = path.stat().st_mtime_ns
+        if cutoff_ns is not None and mtime_ns < cutoff_ns:
             continue
         sess = session_mod.load(path)
         matches = find(sess, pattern, roles)
         if not matches:
             continue
-        summary = summarize(sess, mtime, resumable_only=False)
+        summary = summarize(sess, mtime_ns, resumable_only=False)
         if summary:
             out.append(Hit(summary, matches))
-    return sorted(out, key=lambda h: h.summary.mtime, reverse=True)
+    return sorted(out, key=lambda h: h.summary.mtime_ns, reverse=True)
 
 
-def format_hit(hit: Hit, tz: tzinfo, home: str, limit: int) -> str:
+def format_hit(hit: Hit, clock: Clock, home: str, limit: int) -> str:
     """The session's inventory row, then its matches indented beneath it."""
-    lines = [format_row(hit.summary, tz, home)]
+    lines = [format_row(hit.summary, clock, home)]
     for match in hit.matches[:limit]:
         lines.append(f"    {match.line:>6}  {match.role:<9}  {match.text}")
     if len(hit.matches) > limit:
@@ -216,17 +217,20 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    cutoff = None if args.all else time.time() - args.days * 86400
+    cutoff_ns = (
+        None if args.all else int(time.time() * 1e9) - int(args.days * 86400 * 1e9)
+    )
     pattern = re.compile(args.pattern, re.IGNORECASE)
-    hits = scan(args.projects_dir, cutoff, pattern, ROLES[args.role])
+    hits = scan(args.projects_dir, cutoff_ns, pattern, ROLES[args.role])
     tz = datetime.now().astimezone().tzinfo
     assert tz, tz
+    clock = Clock(tz)
     home = str(Path.home())
     for hit in hits:
         if args.sh:
-            print(format_sh(hit.summary, tz, home))
+            print(format_sh(hit.summary, clock, home))
         else:
-            print(format_hit(hit, tz, home, args.matches))
+            print(format_hit(hit, clock, home, args.matches))
     total = sum(len(h.matches) for h in hits)
     print(f"# {total} matches in {len(hits)} sessions", file=sys.stderr)
     return 0 if hits else 1

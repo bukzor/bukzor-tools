@@ -9,10 +9,12 @@ are collapsed/de-noised.
 from __future__ import annotations
 
 import sys
+from datetime import datetime
 from typing import TextIO
 
 from .format_short import label
 from .session import Node, Session, is_user_text
+from .timefmt import Clock
 
 # ANSI
 RESET = "\033[0m"
@@ -63,13 +65,38 @@ def active_path_uuids(sess: Session) -> set[str]:
     return set()
 
 
-def format_line(node: Node, depth: int, mc_children: int, on_active: bool) -> str:
+def _stamp(ts: str, clock: Clock) -> str:
+    """Record timestamps are UTC on disk; render them via `clock`, not verbatim.
+
+    A raw `ts[11:19]` slice is the record's UTC clock digits printed as if
+    they were local -- right next to filesystem mtimes that genuinely are
+    local, an easy way to misjudge how far apart two events actually were.
+
+    >>> from datetime import timezone
+    >>> _stamp("2026-01-01T00:30:00.123Z", Clock(timezone.utc))
+    '[Jan01 00:30 +0000]'
+    >>> _stamp("", Clock(timezone.utc))
+    ''
+    >>> _stamp("not-a-timestamp", Clock(timezone.utc))
+    'not-a-timestamp'
+    """
+    if not ts:
+        return ""
+    try:
+        dt = datetime.fromisoformat(ts)
+    except ValueError:
+        return ts
+    return clock.stamp(int(dt.timestamp() * 1_000_000_000))
+
+
+def format_line(
+    node: Node, depth: int, mc_children: int, on_active: bool, clock: Clock
+) -> str:
     indent = "  " * depth
     branch_marker = (
         f" {BR_YELLOW}[FORK×{mc_children}]{RESET}" if mc_children > 1 else ""
     )
-    ts = node.timestamp or ""
-    short_ts = ts[11:19] if len(ts) >= 19 else ts
+    stamp = _stamp(node.timestamp or "", clock)
     type_color = {
         "user": CYAN,
         "assistant": MAGENTA,
@@ -81,7 +108,7 @@ def format_line(node: Node, depth: int, mc_children: int, on_active: bool) -> st
     uuid_short = (node.uuid or "")[:8]
     style = BOLD if (mc_children > 1 and not on_active) else ""
     return (
-        f"{indent}{DIM}{line_num} {uuid_short}{RESET} {short_ts} {type_str} "
+        f"{indent}{DIM}{line_num} {uuid_short}{RESET} {stamp} {type_str} "
         f"{style}{lbl}{RESET}{branch_marker}"
     )
 
@@ -106,6 +133,7 @@ def walk(
     branches_only: bool,
     active: set[str],
     out: TextIO,
+    clock: Clock,
 ) -> None:
     if uuid not in sess.by_uuid:
         return
@@ -113,10 +141,18 @@ def walk(
     kids = sess.children.get(uuid, [])
     mc = user_text_child_count(sess, uuid)
     if should_show(sess, node, len(kids), mc, branches_only):
-        out.write(format_line(node, depth, mc, uuid in active) + "\n")
+        out.write(format_line(node, depth, mc, uuid in active, clock) + "\n")
     new_depth = depth + 1 if mc > 1 else depth
     for k in kids:
-        walk(sess, k, new_depth, branches_only=branches_only, active=active, out=out)
+        walk(
+            sess,
+            k,
+            new_depth,
+            branches_only=branches_only,
+            active=active,
+            out=out,
+            clock=clock,
+        )
 
 
 def render(
@@ -124,14 +160,33 @@ def render(
     *,
     branches_only: bool = False,
     out: TextIO = sys.stdout,
+    clock: Clock | None = None,
 ) -> None:
     """Render the session tree to `out`.
 
     `branches_only=True` shows only nodes on a path that crosses a real fork.
+    Per-line times go through `clock` (default: a fresh one on the system
+    zone) -- record timestamps are stored UTC, so this is a conversion, not
+    a relabeling. `clock` renders each row against the *previous printed
+    row*, but a DFS walk isn't chronological (a rewind's sibling branch can
+    predate or postdate the branch just finished) -- so a delta can go
+    negative at a branch return. That's signal, not noise: it's the reader's
+    cue that the tree just jumped, the same way a run of near-zero deltas
+    elsewhere is the cue that nothing did.
     """
+    if clock is None:
+        tz = datetime.now().astimezone().tzinfo
+        assert tz is not None
+        clock = Clock(tz)
     active = active_path_uuids(sess)
     for root in sess.root_nodes():
         if root.uuid:
             walk(
-                sess, root.uuid, 0, branches_only=branches_only, active=active, out=out
+                sess,
+                root.uuid,
+                0,
+                branches_only=branches_only,
+                active=active,
+                out=out,
+                clock=clock,
             )

@@ -15,12 +15,13 @@ import argparse
 import sys
 import time
 from dataclasses import dataclass
-from datetime import datetime, tzinfo
+from datetime import datetime
 from pathlib import Path
 
 from . import session as session_mod
 from .format_short import truncate
 from .session import Node, Session, is_user_text
+from .timefmt import Clock
 
 PROJECTS_DIR = Path.home() / ".claude" / "projects"
 
@@ -63,7 +64,7 @@ def is_substantive(text: str) -> bool:
 
 @dataclass(frozen=True)
 class Summary:
-    mtime: float
+    mtime_ns: int
     session_id: str
     cwd: str | None
     label: str
@@ -72,7 +73,7 @@ class Summary:
 
 
 def summarize(
-    sess: Session, mtime: float, resumable_only: bool = True
+    sess: Session, mtime_ns: int, resumable_only: bool = True
 ) -> Summary | None:
     """Distill one session file to an inventory row; None if not resumable.
 
@@ -91,14 +92,14 @@ def summarize(
     ...              "message": {"content": "fix the bug"}}),
     ...     Node(1, {"type": "ai-title", "title": "Bug fixing"}),
     ... ]))
-    >>> s = summarize(sess, mtime=1786216000.0)
+    >>> s = summarize(sess, mtime_ns=1786216000_000000000)
     >>> s.session_id, s.cwd, s.label
     ('sid-1', '/w', 'Bug fixing')
     >>> untitled = build_session(Path("p/def.jsonl"), iter([
     ...     Node(0, {"uuid": "a", "parentUuid": None, "type": "user",
     ...              "message": {"content": "do things"}}),
     ... ]))
-    >>> summarize(untitled, 0.0).session_id, summarize(untitled, 0.0).label
+    >>> summarize(untitled, 0).session_id, summarize(untitled, 0).label
     ('def', 'do things')
     >>> noisy = build_session(Path("p/x.jsonl"), iter([
     ...     Node(0, {"uuid": "a", "parentUuid": None, "type": "user",
@@ -106,17 +107,17 @@ def summarize(
     ...     Node(1, {"uuid": "b", "parentUuid": "a", "type": "user",
     ...              "message": {"content": "Base directory for this skill: /x"}}),
     ... ]))
-    >>> summarize(noisy, 0.0).label
+    >>> summarize(noisy, 0).label
     'real question'
-    >>> summarize(build_session(Path("x"), iter([])), 0.0) is None
+    >>> summarize(build_session(Path("x"), iter([])), 0) is None
     True
     >>> sidechain = build_session(Path("x"), iter([
     ...     Node(0, {"uuid": "a", "parentUuid": None, "type": "user",
     ...              "isSidechain": True, "message": {"content": "sub"}}),
     ... ]))
-    >>> summarize(sidechain, 0.0) is None
+    >>> summarize(sidechain, 0) is None
     True
-    >>> summarize(sidechain, 0.0, resumable_only=False).sidechain
+    >>> summarize(sidechain, 0, resumable_only=False).sidechain
     True
     """
     if not sess.nodes:
@@ -143,7 +144,7 @@ def summarize(
     else:
         label = "(no user messages)"
     return Summary(
-        mtime=mtime,
+        mtime_ns=mtime_ns,
         session_id=sess.session_id or sess.path.stem,
         cwd=sess.cwd(),
         label=truncate(label, 60),
@@ -169,57 +170,60 @@ def _shorten(path: str, home: str) -> str:
         return path
 
 
-def _stamp(mtime: float, tz: tzinfo) -> str:
-    return datetime.fromtimestamp(mtime, tz).strftime("%Y-%m-%d %H:%M")
-
-
-def format_row(s: Summary, tz: tzinfo, home: str) -> str:
+def format_row(s: Summary, clock: Clock, home: str) -> str:
     """One aligned human-readable line per session.
 
+    `clock` is shared across a run of rows in chronological order -- see
+    `timefmt.Clock` -- so consecutive close-together sessions read as a
+    cluster of small deltas, not two independent absolute stamps a reader
+    has to diff by hand.
+
     >>> from datetime import timezone
-    >>> s = Summary(mtime=1786216000.0, session_id="0e9272f7-aaaa-bbbb",
+    >>> from .timefmt import Clock
+    >>> s = Summary(mtime_ns=1786216000_000000000, session_id="0e9272f7-aaaa-bbbb",
     ...             cwd="/home/u/proj", label="Bug fixing", path=Path("x"))
-    >>> format_row(s, tz=timezone.utc, home="/home/u")
-    '2026-08-08 19:06  0e9272f7  ~/proj  Bug fixing'
+    >>> format_row(s, clock=Clock(timezone.utc), home="/home/u")
+    '[Aug08 19:06 +0000]  0e9272f7  ~/proj  Bug fixing'
 
     A subagent transcript is marked, because `--resume` cannot open one.
 
     >>> import dataclasses
-    >>> format_row(dataclasses.replace(s, sidechain=True), timezone.utc, "/home/u")
-    '2026-08-08 19:06  0e9272f7  ~/proj  [subagent] Bug fixing'
+    >>> format_row(dataclasses.replace(s, sidechain=True), Clock(timezone.utc), "/home/u")
+    '[Aug08 19:06 +0000]  0e9272f7  ~/proj  [subagent] Bug fixing'
     """
     cwd = _shorten(s.cwd, home) if s.cwd else "(cwd unknown)"
     mark = "[subagent] " if s.sidechain else ""
-    return f"{_stamp(s.mtime, tz)}  {s.session_id[:8]}  {cwd}  {mark}{s.label}"
+    return f"{clock.stamp(s.mtime_ns)}  {s.session_id[:8]}  {cwd}  {mark}{s.label}"
 
 
-def format_sh(s: Summary, tz: tzinfo, home: str) -> str:
+def format_sh(s: Summary, clock: Clock, home: str) -> str:
     """A paste-ready resume command, labeled by a comment line.
 
     >>> from datetime import timezone
-    >>> s = Summary(mtime=1786216000.0, session_id="0e9272f7-aaaa-bbbb",
+    >>> from .timefmt import Clock
+    >>> s = Summary(mtime_ns=1786216000_000000000, session_id="0e9272f7-aaaa-bbbb",
     ...             cwd="/home/u/proj", label="Bug fixing", path=Path("x"))
-    >>> print(format_sh(s, tz=timezone.utc, home="/home/u"))
-    # 2026-08-08 19:06  Bug fixing
+    >>> print(format_sh(s, clock=Clock(timezone.utc), home="/home/u"))
+    # [Aug08 19:06 +0000]  Bug fixing
     (cd ~/proj && claude --resume 0e9272f7-aaaa-bbbb)
     """
-    comment = f"# {_stamp(s.mtime, tz)}  {s.label}"
+    comment = f"# {clock.stamp(s.mtime_ns)}  {s.label}"
     if not s.cwd:
         return f"{comment}\n# no cwd recorded; resume from its original directory: {s.path}"
     return f"{comment}\n(cd {_shorten(s.cwd, home)} && claude --resume {s.session_id})"
 
 
-def scan(projects_dir: Path, cutoff: float | None) -> list[Summary]:
+def scan(projects_dir: Path, cutoff_ns: int | None) -> list[Summary]:
     """Load every recent-enough session file. Newest first."""
     out: list[Summary] = []
     for path in projects_dir.glob("*/*.jsonl"):
-        mtime = path.stat().st_mtime
-        if cutoff is not None and mtime < cutoff:
+        mtime_ns = path.stat().st_mtime_ns
+        if cutoff_ns is not None and mtime_ns < cutoff_ns:
             continue
-        summary = summarize(session_mod.load(path), mtime)
+        summary = summarize(session_mod.load(path), mtime_ns)
         if summary:
             out.append(summary)
-    return sorted(out, key=lambda s: s.mtime, reverse=True)
+    return sorted(out, key=lambda s: s.mtime_ns, reverse=True)
 
 
 def parse_args() -> argparse.Namespace:
@@ -237,13 +241,16 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    cutoff = None if args.all else time.time() - args.days * 86400
-    summaries = scan(args.projects_dir, cutoff)
+    cutoff_ns = (
+        None if args.all else int(time.time() * 1e9) - int(args.days * 86400 * 1e9)
+    )
+    summaries = scan(args.projects_dir, cutoff_ns)
     tz = datetime.now().astimezone().tzinfo
     assert tz, tz
+    clock = Clock(tz)
     home = str(Path.home())
     fmt = format_sh if args.sh else format_row
     for s in summaries:
-        print(fmt(s, tz, home))
+        print(fmt(s, clock, home))
     print(f"# {len(summaries)} sessions", file=sys.stderr)
     return 0

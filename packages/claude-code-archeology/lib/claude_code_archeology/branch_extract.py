@@ -11,11 +11,20 @@ Given any record on a branch, this traces *forward* to that branch's tip
 (you can rewind afterward; you cannot fast-forward), collects every record
 belonging to it, and writes them out under a fresh `sessionId`.
 
-`--at` keeps the named record as the tip instead, discarding everything
-after it: the in-session rewind picker only offers *your own* prompts as
-cut points, so a mid-conversation state that no prompt of yours precedes
--- a subagent's turn, an assistant reply you want answered differently --
-is reachable only by cutting the file here.
+`--at` cuts just past the named record instead of running to the branch
+tip: the in-session rewind picker only offers *your own* prompts as cut
+points, so a mid-conversation state that no prompt of yours precedes -- a
+subagent's turn, an assistant reply you want answered differently -- is
+reachable only by cutting the file here.
+
+The cut keeps one message *after* the ref, because the two errors are not
+symmetric. A message cut away is gone from the resumed session and only
+another extraction brings it back; a message kept too many is droppable
+there, since `/rewind` offers your own prompts as cut points and the
+message following an assistant reply is one of those. The ref is also
+usually the record a search matched, and what you want to resume is the
+exchange it belongs to -- the reply that answers the prompt you found, the
+reaction that follows the turn you found -- not its first half.
 
 `--as-session` re-homes a subagent transcript as a session of its own.
 Subagent records live beside their parent, marked `isSidechain`, and
@@ -83,6 +92,39 @@ def resolve_ref(sess: Session, ref: str) -> Node:
         if n.line == line:
             return n
     raise SystemExit(f"line {line} not found in {sess.path}")
+
+
+def message_after(sess: Session, node: Node) -> Node | None:
+    """Pure: the next user/assistant record after `node` on its branch.
+
+    None when `node` is the branch's last message. Records that are not
+    messages -- attachments, system notices, file-history snapshots --
+    are skipped rather than counted, since a cut landing on one of those
+    would keep no more conversation than cutting at the ref.
+
+    >>> from pathlib import Path
+    >>> from .session import build_session
+    >>> sess = build_session(Path("x"), iter([
+    ...     Node(1, {"uuid": "a", "parentUuid": None, "type": "user"}),
+    ...     Node(2, {"uuid": "b", "parentUuid": "a", "type": "assistant"}),
+    ...     Node(3, {"uuid": "sys", "parentUuid": "b", "type": "system"}),
+    ...     Node(4, {"uuid": "c", "parentUuid": "sys", "type": "user"}),
+    ... ]))
+    >>> message_after(sess, sess.by_uuid["b"]).uuid
+    'c'
+    >>> print(message_after(sess, sess.by_uuid["c"]))
+    None
+    """
+    assert node.uuid, node
+    tip = sess.tip_of(node.uuid)
+    if tip is None or not tip.uuid:
+        return None
+    passed = False
+    for n in sess.ancestors_of(tip.uuid):
+        if passed and n.type in ("user", "assistant"):
+            return n
+        passed = passed or n.uuid == node.uuid
+    return None
 
 
 def belongs_to_branch(sess: Session, chain: set[str], node: Node) -> bool:
@@ -252,7 +294,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--at",
         action="store_true",
-        help="cut at ref instead of its branch tip -- everything after is dropped",
+        help="cut just past ref (ref plus the next message) instead of"
+        " running to its branch tip -- everything after is dropped",
     )
     p.add_argument(
         "--as-session",
@@ -272,7 +315,7 @@ def main() -> int:
 
     ref = resolve_ref(sess, args.ref)
     assert ref.uuid, (args.path, args.ref)
-    tip = ref if args.at else sess.tip_of(ref.uuid)
+    tip = (message_after(sess, ref) or ref) if args.at else sess.tip_of(ref.uuid)
     assert tip, (args.path, args.ref)
     new_sid = args.session_id or str(uuidlib.uuid4())
     home = (
@@ -296,9 +339,8 @@ def main() -> int:
         )
     print(f"wrote {count} of {len(sess.nodes)} records to {out}", file=sys.stderr)
     if tip.line != ref.line:
-        print(
-            f"branch tip: line {tip.line} {tip.uuid} ({tip.timestamp})", file=sys.stderr
-        )
+        label = "cut after" if args.at else "branch tip"
+        print(f"{label}: line {tip.line} {tip.uuid} ({tip.timestamp})", file=sys.stderr)
     print(
         f"resume it:  cd {args.as_session or sess.cwd(among=kept)}"
         f" && claude --resume {new_sid}",

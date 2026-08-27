@@ -12,10 +12,18 @@ Given any record on a branch, this traces *forward* to that branch's tip
 belonging to it, and writes them out under a fresh `sessionId`.
 
 `--at` cuts just past the named record instead of running to the branch
-tip: the in-session rewind picker only offers *your own* prompts as cut
-points, so a mid-conversation state that no prompt of yours precedes -- a
-subagent's turn, an assistant reply you want answered differently -- is
-reachable only by cutting the file here.
+tip. What that buys is narrower than it looks, because the default plus
+`/rewind` already covers a lot: resume the whole branch and the in-session
+picker will cut it at any prompt of *yours*. So `--at` is for the states
+that leaves out -- one that must *keep* an assistant reply or a tool
+result and drop what came after it, one sitting inside a turn, or a
+promoted subagent's, whose user-role records are tool results rather than
+prompts. Wanting a reply answered differently is not one of those: rewind
+to the prompt that produced it and send it again.
+
+The other half of the case is economy. Rewinding drops the later era
+after the session has loaded it; `--at` drops it before, which is the
+difference between resuming 185 records and 701.
 
 The cut keeps one message *after* the ref, because the two errors are not
 symmetric. A message cut away is gone from the resumed session and only

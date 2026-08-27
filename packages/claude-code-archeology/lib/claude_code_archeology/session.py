@@ -304,7 +304,7 @@ def load(path: Path | str) -> Session:
     """Read a JSONL session file from disk."""
     path = Path(path)
     with path.open() as f:
-        nodes = parse_jsonl(enumerate(f))
+        nodes = parse_jsonl(enumerate(f, 1))
         return build_session(path, nodes)
 
 

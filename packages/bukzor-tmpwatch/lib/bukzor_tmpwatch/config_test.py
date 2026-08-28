@@ -1,0 +1,223 @@
+import time
+from pathlib import Path
+
+import pytest
+
+from . import config as config_module
+from .config import (
+    APP,
+    DEFAULT_KEEP,
+    DEFAULT_PRUNE,
+    DEFAULT_PURGE_AFTER_DAYS,
+    DEFAULT_QUARANTINE_AFTER_DAYS,
+    DEFAULT_QUARANTINE_DIR,
+    DEFAULT_ROOTS,
+    DEFAULT_TRASH_DIR,
+    TEMPLATES,
+    Config,
+    boot_stamp,
+    config_dir,
+    expand_keep,
+    load_config,
+    parse_lines,
+    read_days,
+    read_value,
+    read_values,
+    setting_names,
+    xdg_config_home,
+)
+
+# A Config for tests elsewhere: the real defaults, but with nothing exempt and
+# no roots of its own, so a test states only what it is about.
+DEFAULTS = Config(
+    roots=(),
+    prune=frozenset(DEFAULT_PRUNE),
+    keep=frozenset(),
+    trash_dir=DEFAULT_TRASH_DIR,
+    quarantine_dir=DEFAULT_QUARANTINE_DIR,
+    quarantine_after_days=DEFAULT_QUARANTINE_AFTER_DAYS,
+    purge_after_days=DEFAULT_PURGE_AFTER_DAYS,
+)
+
+
+def write(directory: Path, name: str, text: str) -> None:
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / name).write_text(text)
+
+
+def documented_default(name: str) -> list[str]:
+    """The values a template file documents under its `# default:` marker."""
+    _, marker, tail = (TEMPLATES / name).read_text().partition("# default:\n")
+    assert marker, name
+    return [
+        line.removeprefix("#").strip()
+        for line in tail.splitlines()
+        if line.strip().removeprefix("#").strip()
+    ]
+
+
+class DescribeParseLines:
+    def it_drops_comments_and_surrounding_space(self):
+        assert parse_lines("# note\n\n  a  \nb # why\n") == ["a", "b"]
+
+    def it_reads_nothing_from_an_all_comment_file(self):
+        assert parse_lines("# only\n# comments\n") == []
+
+
+class DescribeXdgConfigHome:
+    def it_honors_the_environment(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        assert xdg_config_home() == tmp_path
+
+    def it_falls_back_to_dot_config(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+        monkeypatch.setenv("HOME", str(tmp_path))
+        assert xdg_config_home() == tmp_path / ".config"
+
+
+class DescribeConfigDir:
+    def it_is_named_for_the_command(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        assert config_dir() == tmp_path / APP
+
+
+class DescribeReadValues:
+    def it_defaults_when_there_is_no_file(self, tmp_path: Path):
+        assert read_values(tmp_path, "roots", ("~/tmp",)) == ["~/tmp"]
+
+    def it_reads_one_value_per_line(self, tmp_path: Path):
+        write(tmp_path, "prune", "target\n.venv\n")
+        assert read_values(tmp_path, "prune", ()) == ["target", ".venv"]
+
+    def it_takes_an_emptied_file_as_the_empty_list(self, tmp_path: Path):
+        """Emptying a file is how a setting is switched off."""
+        write(tmp_path, "prune", "# nothing\n")
+        assert read_values(tmp_path, "prune", ("target",)) == []
+
+    def it_spells_a_setting_with_dashes(self, tmp_path: Path):
+        write(tmp_path, "trash-dir", "scratch\n")
+        assert read_values(tmp_path, "trash_dir", ()) == ["scratch"]
+
+
+class DescribeReadValue:
+    def it_refuses_a_second_value(self, tmp_path: Path):
+        write(tmp_path, "trash-dir", "a\nb\n")
+        with pytest.raises(AssertionError):
+            read_value(tmp_path, "trash_dir", "trash")
+
+    def it_is_empty_when_the_file_is(self, tmp_path: Path):
+        write(tmp_path, "trash-dir", "")
+        assert read_value(tmp_path, "trash_dir", "trash") == ""
+
+
+class DescribeReadDays:
+    def it_reads_a_whole_number(self, tmp_path: Path):
+        write(tmp_path, "purge-after-days", "3\n")
+        assert read_days(tmp_path, "purge_after_days", 15) == 3
+
+    def it_refuses_anything_that_is_not_one(self, tmp_path: Path):
+        write(tmp_path, "purge-after-days", "-1\n")
+        with pytest.raises(AssertionError):
+            read_days(tmp_path, "purge_after_days", 15)
+
+
+class DescribeBootStamp:
+    def it_is_epoch_seconds_in_the_past(self):
+        assert 0 < boot_stamp() <= time.time()
+
+
+class DescribeExpandKeep:
+    def it_substitutes_the_boot_stamp(self):
+        assert expand_keep(["boot={boot}"]) == frozenset({f"boot={boot_stamp()}"})
+
+    def it_leaves_a_plain_name_alone(self):
+        assert expand_keep(["notes"]) == frozenset({"notes"})
+
+    def it_does_not_read_a_boot_time_nobody_asked_for(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        """A host without /proc/stat is configurable rather than unusable."""
+        monkeypatch.setattr(config_module, "PROC_STAT", Path("/nonexistent"))
+        assert expand_keep(["notes"]) == frozenset({"notes"})
+
+
+class DescribeConfig:
+    def it_refuses_an_empty_quarantine_dir(self):
+        """Sweeping the quarantine into itself is not survivable."""
+        with pytest.raises(AssertionError):
+            Config(
+                roots=(),
+                prune=frozenset(),
+                keep=frozenset(),
+                trash_dir="trash",
+                quarantine_dir="",
+                quarantine_after_days=1,
+                purge_after_days=1,
+            )
+
+
+class DescribeLoadConfig:
+    def it_is_all_defaults_for_a_directory_that_does_not_exist(self, tmp_path: Path):
+        loaded = load_config(tmp_path / "absent")
+        assert loaded.roots == (Path("~/tmp").expanduser(),)
+        assert loaded.prune == frozenset(DEFAULT_PRUNE)
+        assert loaded.trash_dir == DEFAULT_TRASH_DIR
+        assert loaded.quarantine_dir == DEFAULT_QUARANTINE_DIR
+        assert loaded.quarantine_after_days == DEFAULT_QUARANTINE_AFTER_DAYS
+        assert loaded.purge_after_days == DEFAULT_PURGE_AFTER_DAYS
+
+    def it_expands_a_tilde_in_a_root(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.setenv("HOME", "/home/someone")
+        write(tmp_path, "roots", "~/scratch\n")
+        assert load_config(tmp_path).roots == (Path("/home/someone/scratch"),)
+
+    def it_takes_every_setting_from_its_own_file(self, tmp_path: Path):
+        for name, value in {
+            "roots": "/srv/scratch",
+            "prune": "target",
+            "keep": "notes",
+            "trash-dir": "junk",
+            "quarantine-dir": "attic",
+            "quarantine-after-days": "2",
+            "purge-after-days": "3",
+        }.items():
+            write(tmp_path, name, value + "\n")
+        assert load_config(tmp_path) == Config(
+            roots=(Path("/srv/scratch"),),
+            prune=frozenset({"target"}),
+            keep=frozenset({"notes"}),
+            trash_dir="junk",
+            quarantine_dir="attic",
+            quarantine_after_days=2,
+            purge_after_days=3,
+        )
+
+
+class DescribeTheTemplates:
+    def it_ships_one_per_setting(self):
+        assert sorted(path.name for path in TEMPLATES.iterdir()) == sorted(
+            setting_names()
+        )
+
+    def it_behaves_like_no_config_until_edited(self):
+        for name in setting_names():
+            assert parse_lines((TEMPLATES / name).read_text()) == [], name
+
+    def it_documents_the_default_the_code_actually_uses(self):
+        assert documented_default("roots") == list(DEFAULT_ROOTS)
+        assert documented_default("prune") == list(DEFAULT_PRUNE)
+        assert documented_default("keep") == list(DEFAULT_KEEP)
+        assert documented_default("trash-dir") == [DEFAULT_TRASH_DIR]
+        assert documented_default("quarantine-dir") == [DEFAULT_QUARANTINE_DIR]
+        assert documented_default("quarantine-after-days") == [
+            str(DEFAULT_QUARANTINE_AFTER_DAYS)
+        ]
+        assert documented_default("purge-after-days") == [str(DEFAULT_PURGE_AFTER_DAYS)]

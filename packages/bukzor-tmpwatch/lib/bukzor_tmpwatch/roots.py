@@ -1,23 +1,18 @@
 """Which directories are scratch, and therefore sweepable.
 
 The convention is a `trash/` created and gitignored beside the work it serves,
-plus `~/tmp`. Directories merely *named* trash/ are common in content that must
-survive: vendored packages ship one, and a repository's own interior holds
-`refs/heads/trash/` for any branch under that name. Git is the arbiter -- a
-scratch trash/ holds nothing git tracks.
+plus the roots named in configuration. Directories merely *named* trash/ are
+common in content that must survive: vendored packages ship one, and a
+repository's own interior holds `refs/heads/trash/` for any branch under that
+name. Git is the arbiter -- a scratch trash/ holds nothing git tracks.
 """
 
 import os
-from collections.abc import Iterator, Sequence
+from collections.abc import Container, Iterator, Sequence
 from pathlib import Path
 from subprocess import run
 
-TRASH = "trash"
-
-# Skipped for speed, except .git: a repository interior must never be walked.
-PRUNE = frozenset(
-    {".git", ".cache", ".npm", ".rustup", ".venv", "node_modules", "target"}
-)
+from .config import Config
 
 
 def is_git_dir(path: Path) -> bool:
@@ -37,18 +32,21 @@ def is_git_dir(path: Path) -> bool:
         return False
 
 
-def find_trash_dirs(top: Path) -> Iterator[Path]:
-    """Every directory named `trash` below `top`, not descending into one."""
+def find_dirs_named(top: Path, name: str, prune: Container[str]) -> Iterator[Path]:
+    """Every directory called `name` below `top`, not descending into one.
+
+    A repository interior is never walked, listed in `prune` or not.
+    """
     for dirpath, dirnames, _ in os.walk(top):
         here = Path(dirpath)
         dirnames[:] = [
-            name
-            for name in dirnames
-            if name not in PRUNE and not is_git_dir(here / name)
+            child
+            for child in dirnames
+            if child not in prune and not is_git_dir(here / child)
         ]
-        if TRASH in dirnames:
-            dirnames.remove(TRASH)
-            yield here / TRASH
+        if name in dirnames:
+            dirnames.remove(name)
+            yield here / name
 
 
 def git_env() -> dict[str, str]:
@@ -77,17 +75,20 @@ def git_tracks_content(path: Path) -> bool:
     return proc.returncode != 0 or bool(proc.stdout)
 
 
-def scratch_roots(home: Path) -> list[Path]:
-    """Every sweepable root: `home/tmp`, plus each untracked `trash/` below."""
-    return [home / "tmp"] + [
-        trash for trash in find_trash_dirs(home) if not git_tracks_content(trash)
-    ]
+def scratch_roots(home: Path, config: Config) -> list[Path]:
+    """Every sweepable root: the configured ones, plus scratch found below `home`."""
+    if not config.trash_dir:
+        return list(config.roots)
+    else:
+        return list(config.roots) + [
+            found
+            for found in find_dirs_named(home, config.trash_dir, config.prune)
+            if not git_tracks_content(found)
+        ]
 
 
 __all__: Sequence[str] = (
-    "PRUNE",
-    "TRASH",
-    "find_trash_dirs",
+    "find_dirs_named",
     "git_env",
     "git_tracks_content",
     "is_git_dir",

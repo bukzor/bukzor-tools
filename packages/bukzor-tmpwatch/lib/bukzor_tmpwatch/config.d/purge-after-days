@@ -1,0 +1,6 @@
+# Whole days a quarantine batch is kept before it is deleted, counted from the
+# sweep date its name records.
+# Nothing is lost until quarantine-after-days plus this many have passed.
+
+# default:
+# 15

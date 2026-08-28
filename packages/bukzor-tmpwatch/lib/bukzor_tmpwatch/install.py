@@ -1,17 +1,20 @@
-"""Put the systemd units where systemd looks for them.
+"""Put this command's files where systemd and the user will find them.
 
-A wheel lands in a venv; `systemctl --user` reads only its own search path. The
-units ship beside this module so they are version-controlled and reviewable as a
-diff, and installation copies them out. Re-run after an upgrade.
+A wheel lands in a venv; `systemctl --user` reads only its own search path, and
+nobody discovers settings that exist solely as defaults in the source. The
+units and the annotated setting templates ship beside this module so they are
+version-controlled and reviewable as a diff, and installation copies them out.
+Re-run after an upgrade.
 
 Usage: bukzor-tmpwatch-install
 """
 
-import os
 import shutil
 from collections.abc import Sequence
 from pathlib import Path
 from subprocess import run
+
+from .config import TEMPLATES, config_dir, setting_names, xdg_config_home
 
 HERE = Path(__file__).parent
 UNITS = ("bukzor-tmpwatch.service", "bukzor-tmpwatch.timer")
@@ -19,8 +22,7 @@ UNITS = ("bukzor-tmpwatch.service", "bukzor-tmpwatch.timer")
 
 def unit_dir() -> Path:
     """Where `systemctl --user` reads units this user owns."""
-    config = os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config"
-    return Path(config) / "systemd/user"
+    return xdg_config_home() / "systemd/user"
 
 
 def proc_install(target: Path) -> list[Path]:
@@ -32,8 +34,25 @@ def proc_install(target: Path) -> list[Path]:
     return written
 
 
+def proc_write_settings(target: Path) -> list[Path]:
+    """Copy each missing setting template into `target`, returning what was written.
+
+    A file already there is the user's answer and is never overwritten, so this
+    is safe to re-run. Every template is entirely comments, so a fresh install
+    documents the settings without changing any of them.
+    """
+    target.mkdir(parents=True, exist_ok=True)
+    written: list[Path] = []
+    for name in setting_names():
+        dest = target / name
+        if not dest.exists():
+            shutil.copyfile(TEMPLATES / name, dest)
+            written.append(dest)
+    return written
+
+
 def main() -> int:
-    written = proc_install(unit_dir())
+    written = proc_install(unit_dir()) + proc_write_settings(config_dir())
     run(["systemctl", "--user", "daemon-reload"], check=True)
     for path in written:
         print(path)
@@ -41,4 +60,9 @@ def main() -> int:
     return 0
 
 
-__all__: Sequence[str] = ("UNITS", "proc_install", "unit_dir")
+__all__: Sequence[str] = (
+    "UNITS",
+    "proc_install",
+    "proc_write_settings",
+    "unit_dir",
+)

@@ -1,8 +1,11 @@
 """End-to-end checks against the installed console scripts.
 
 These drive the real entry points as subprocesses, so they cover the wiring a
-unit test cannot see: argv parsing, the console scripts existing at all, and
-the packaged systemd units surviving the build.
+unit test cannot see: argv parsing, settings read from disk, the console
+scripts existing at all, and the packaged files surviving the build.
+
+Every run is given its own XDG_CONFIG_HOME, so these never consult -- or are
+steered by -- the settings of whoever is running the tests.
 """
 
 import os
@@ -14,6 +17,8 @@ from pathlib import Path
 from subprocess import CompletedProcess, run
 
 import pytest
+
+from .config import APP, setting_names
 
 BIN = Path(sys.executable).parent
 COMMAND = BIN / "bukzor-tmpwatch"
@@ -33,8 +38,22 @@ def has_user_systemd() -> bool:
     return probe.returncode == 0
 
 
-def tmpwatch(*args: str) -> CompletedProcess[str]:
-    return run([str(COMMAND), *args], capture_output=True, text=True)
+def isolated(home: Path) -> dict[str, str]:
+    """Environment whose settings live under `home`, wherever the tester's are."""
+    return dict(os.environ) | {"XDG_CONFIG_HOME": str(home / "config")}
+
+
+def settings_dir(home: Path) -> Path:
+    """The settings directory of an isolated run, created."""
+    path = home / "config" / APP
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def tmpwatch(home: Path, *args: str) -> CompletedProcess[str]:
+    return run(
+        [str(COMMAND), *args], capture_output=True, text=True, env=isolated(home)
+    )
 
 
 def stale_file(root: Path, name: str, days: int) -> Path:
@@ -55,81 +74,133 @@ class DescribeTheCommand:
         assert COMMAND.is_file(), COMMAND
 
     def it_reports_without_writing_by_default(self, tmp_path: Path):
-        stale_file(tmp_path, "stale.txt", days=60)
-        done = tmpwatch(str(tmp_path))
+        scratch = tmp_path / "scratch"
+        stale_file(scratch, "stale.txt", days=60)
+        done = tmpwatch(tmp_path, str(scratch))
         assert done.returncode == 0, done.stderr
         assert "would quarantine" in done.stdout
-        assert (tmp_path / "stale.txt").exists()
+        assert (scratch / "stale.txt").exists()
 
     def it_says_on_stderr_how_to_apply(self, tmp_path: Path):
-        stale_file(tmp_path, "stale.txt", days=60)
-        assert "--write to apply" in tmpwatch(str(tmp_path)).stderr
+        scratch = tmp_path / "scratch"
+        stale_file(scratch, "stale.txt", days=60)
+        assert "--write to apply" in tmpwatch(tmp_path, str(scratch)).stderr
 
     def it_stays_quiet_when_there_is_nothing_to_do(self, tmp_path: Path):
-        done = tmpwatch(str(tmp_path))
+        scratch = tmp_path / "scratch"
+        scratch.mkdir()
+        done = tmpwatch(tmp_path, str(scratch))
         assert (done.stdout, done.stderr) == ("", "")
 
     def it_refuses_the_flag_that_used_to_mean_dry_run(self, tmp_path: Path):
-        done = tmpwatch("-n", str(tmp_path))
+        done = tmpwatch(tmp_path, "-n", str(tmp_path))
         assert done.returncode != 0
         assert "unrecognized arguments: -n" in done.stderr
 
 
+class WhenConfigured:
+    def it_waits_the_number_of_days_a_setting_file_gives(self, tmp_path: Path):
+        """Nothing else in this test would quarantine a three-day-old file."""
+        (settings_dir(tmp_path) / "quarantine-after-days").write_text("2\n")
+        scratch = tmp_path / "scratch"
+        stale_file(scratch, "stale.txt", days=3)
+        assert "would quarantine" in tmpwatch(tmp_path, str(scratch)).stdout
+
+    def it_exempts_a_name_a_setting_file_keeps(self, tmp_path: Path):
+        settings = settings_dir(tmp_path)
+        (settings / "quarantine-after-days").write_text("2\n")
+        (settings / "keep").write_text("# mine\nstale.txt\n")
+        scratch = tmp_path / "scratch"
+        stale_file(scratch, "stale.txt", days=3)
+        assert tmpwatch(tmp_path, str(scratch)).stdout == ""
+
+    def it_parks_swept_entries_where_a_setting_file_says(self, tmp_path: Path):
+        (settings_dir(tmp_path) / "quarantine-dir").write_text("attic\n")
+        scratch = tmp_path / "scratch"
+        stale_file(scratch, "stale.txt", days=60)
+        done = tmpwatch(tmp_path, "--write", str(scratch))
+        assert (done.returncode, done.stderr) == (0, "")
+        assert (scratch / "attic" / date.today().isoformat() / "stale.txt").is_file()
+
+    def it_lets_a_flag_override_a_setting_file(self, tmp_path: Path):
+        (settings_dir(tmp_path) / "quarantine-after-days").write_text("90\n")
+        scratch = tmp_path / "scratch"
+        stale_file(scratch, "stale.txt", days=60)
+        assert tmpwatch(tmp_path, str(scratch)).stdout == ""
+        assert (
+            "would quarantine"
+            in tmpwatch(tmp_path, "--quarantine-after", "30", str(scratch)).stdout
+        )
+
+
 class WhenWriting:
     def it_quarantines_into_a_batch_named_for_today(self, tmp_path: Path):
-        stale_file(tmp_path, "stale.txt", days=60)
-        done = tmpwatch("--write", str(tmp_path))
+        scratch = tmp_path / "scratch"
+        stale_file(scratch, "stale.txt", days=60)
+        done = tmpwatch(tmp_path, "--write", str(scratch))
         assert (done.returncode, done.stderr) == (0, "")
-        batch = tmp_path / "lost-and-found" / date.today().isoformat()
+        batch = scratch / "lost-and-found" / date.today().isoformat()
         assert (batch / "stale.txt").is_file()
-        assert not (tmp_path / "stale.txt").exists()
+        assert not (scratch / "stale.txt").exists()
 
     def it_leaves_an_entry_whose_contents_are_fresh(self, tmp_path: Path):
-        stale_file(tmp_path, "project/deep/old.txt", days=60)
-        (tmp_path / "project/deep/new.txt").write_text("x")
+        scratch = tmp_path / "scratch"
+        stale_file(scratch, "project/deep/old.txt", days=60)
+        (scratch / "project/deep/new.txt").write_text("x")
         # Only the walk can see this: the entry's own mtime stays old, because
         # writing inside project/deep/ does not touch project/.
-        os.utime(tmp_path / "project", (0, 0))
-        tmpwatch("--write", str(tmp_path))
-        assert (tmp_path / "project/deep/old.txt").is_file()
+        os.utime(scratch / "project", (0, 0))
+        tmpwatch(tmp_path, "--write", str(scratch))
+        assert (scratch / "project/deep/old.txt").is_file()
 
     def it_never_sweeps_a_symlink(self, tmp_path: Path):
-        stale_file(tmp_path, "elsewhere/old.txt", days=60)
-        link = tmp_path / "link"
-        link.symlink_to(tmp_path / "elsewhere")
+        scratch = tmp_path / "scratch"
+        stale_file(scratch, "elsewhere/old.txt", days=60)
+        link = scratch / "link"
+        link.symlink_to(scratch / "elsewhere")
         os.utime(link, (0, 0), follow_symlinks=False)
-        tmpwatch("--write", str(tmp_path))
+        tmpwatch(tmp_path, "--write", str(scratch))
         assert link.is_symlink()
 
     def it_purges_a_batch_once_its_datestamp_is_old_enough(self, tmp_path: Path):
-        doomed = tmp_path / "lost-and-found/2020-01-01"
+        doomed = tmp_path / "scratch/lost-and-found/2020-01-01"
         doomed.mkdir(parents=True)
         (doomed / "forgotten.txt").write_text("x")
-        done = tmpwatch("--write", "--purge-after", "1", str(tmp_path))
+        done = tmpwatch(
+            tmp_path, "--write", "--purge-after", "1", str(tmp_path / "scratch")
+        )
         assert "purged" in done.stdout, done.stdout
         assert not doomed.exists()
 
     def it_keeps_a_batch_that_is_still_young(self, tmp_path: Path):
-        recent = tmp_path / "lost-and-found" / date.today().isoformat()
+        recent = tmp_path / "scratch/lost-and-found" / date.today().isoformat()
         recent.mkdir(parents=True)
         (recent / "kept.txt").write_text("x")
-        tmpwatch("--write", "--purge-after", "1", str(tmp_path))
+        tmpwatch(tmp_path, "--write", "--purge-after", "1", str(tmp_path / "scratch"))
         assert (recent / "kept.txt").is_file()
 
 
 @pytest.mark.skipif(not has_user_systemd(), reason="no systemd user session")
 class DescribeTheInstaller:
-    def it_writes_both_units_where_systemd_reads_them(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ):
-        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    def it_writes_both_units_where_systemd_reads_them(self, tmp_path: Path):
         done = run(
-            [str(INSTALLER)], capture_output=True, text=True, env=dict(os.environ)
+            [str(INSTALLER)], capture_output=True, text=True, env=isolated(tmp_path)
         )
         assert done.returncode == 0, done.stderr
-        installed = tmp_path / "systemd/user"
+        installed = tmp_path / "config/systemd/user"
         for name in ("bukzor-tmpwatch.service", "bukzor-tmpwatch.timer"):
             assert (installed / name).read_bytes() == (PACKAGE / name).read_bytes()
+
+    def it_seeds_every_setting_where_the_command_will_look(self, tmp_path: Path):
+        run([str(INSTALLER)], capture_output=True, check=True, env=isolated(tmp_path))
+        seeded = tmp_path / "config" / APP
+        assert sorted(path.name for path in seeded.iterdir()) == sorted(setting_names())
+
+    def it_leaves_a_seeded_file_alone_on_reinstall(self, tmp_path: Path):
+        mine = settings_dir(tmp_path) / "purge-after-days"
+        mine.write_text("90\n")
+        run([str(INSTALLER)], capture_output=True, check=True, env=isolated(tmp_path))
+        assert mine.read_text() == "90\n"
 
     def it_installs_a_unit_that_asks_for_the_write(self):
         service = (PACKAGE / "bukzor-tmpwatch.service").read_text()
@@ -155,6 +226,11 @@ class DescribeTheWheel:
         shipped = set(wheel.namelist())
         assert "bukzor_tmpwatch/bukzor-tmpwatch.service" in shipped
         assert "bukzor_tmpwatch/bukzor-tmpwatch.timer" in shipped
+
+    def it_ships_every_setting_template(self, wheel: zipfile.ZipFile):
+        shipped = set(wheel.namelist())
+        for name in setting_names():
+            assert f"bukzor_tmpwatch/config.d/{name}" in shipped
 
     def it_omits_the_tests(self, wheel: zipfile.ZipFile):
         assert [name for name in wheel.namelist() if name.endswith("_test.py")] == []

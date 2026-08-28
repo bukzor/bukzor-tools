@@ -1,27 +1,19 @@
 """Two-phase sweep of one scratch root.
 
 Nothing is deleted that was not first quarantined somewhere visible: an idle
-top-level entry moves to `<root>/lost-and-found/<sweep-date>/`, and a whole
+top-level entry moves to `<root>/<quarantine dir>/<sweep date>/`, and a whole
 quarantine batch is deleted once its own datestamp is old enough.
 """
 
 import os
 import shutil
 from collections.abc import Container, Iterator, Sequence
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
-QUARANTINE_DIR = "lost-and-found"
-PROC_STAT = Path("/proc/stat")
+from .config import Config
 
-
-def boot_stamp() -> int:
-    """Epoch seconds at which this kernel booted."""
-    for line in PROC_STAT.read_text().splitlines():
-        field, _, value = line.partition(" ")
-        if field == "btime":
-            return int(value)
-    raise AssertionError(PROC_STAT)
+SECONDS_PER_DAY = 24 * 60 * 60
 
 
 def parse_datestamp(name: str) -> date | None:
@@ -89,22 +81,23 @@ def entry_count(path: Path) -> int:
 
 
 def proc_sweep(
-    root: Path,
-    idle_cutoff: float,
-    purge_cutoff: date,
-    today: date,
-    keep: Container[str],
-    dry_run: bool,
+    root: Path, config: Config, now: float, today: date, dry_run: bool
 ) -> Iterator[str]:
     """Quarantine then purge `root`, yielding one report line per action."""
-    batch = root / QUARANTINE_DIR / today.isoformat()
+    quarantine = root / config.quarantine_dir
+    batch = quarantine / today.isoformat()
+    # Quarantining the quarantine would rename a directory into its own
+    # subdirectory, so it is exempt whatever the configuration says.
+    keep = config.keep | {config.quarantine_dir}
+    idle_cutoff = now - config.quarantine_after_days * SECONDS_PER_DAY
+    purge_cutoff = today - timedelta(days=config.purge_after_days)
     for entry in idle_entries(root, idle_cutoff, keep):
         if not dry_run:
             batch.mkdir(parents=True, exist_ok=True)
             shutil.move(entry, batch / entry.name)
         verb = "would quarantine" if dry_run else "quarantined"
         yield f"{verb} {entry} -> {batch}/"
-    for stale in expired_batches(root / QUARANTINE_DIR, purge_cutoff):
+    for stale in expired_batches(quarantine, purge_cutoff):
         count = entry_count(stale)
         if not dry_run:
             shutil.rmtree(stale)
@@ -113,8 +106,7 @@ def proc_sweep(
 
 
 __all__: Sequence[str] = (
-    "QUARANTINE_DIR",
-    "boot_stamp",
+    "SECONDS_PER_DAY",
     "entry_count",
     "expired_batches",
     "has_recent_write",

@@ -2,7 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from .install import UNITS, proc_install, unit_dir
+from .config import parse_lines, setting_names
+from .install import UNITS, proc_install, proc_write_settings, unit_dir
 
 
 class DescribeUnitDir:
@@ -36,3 +37,25 @@ class DescribeProcInstall:
         stale.write_text("[Unit]\nDescription=stale\n")
         proc_install(tmp_path)
         assert "stale" not in stale.read_text()
+
+
+class DescribeProcWriteSettings:
+    def it_writes_a_template_for_every_setting(self, tmp_path: Path):
+        target = tmp_path / "config/bukzor-tmpwatch"
+        assert proc_write_settings(target) == [
+            target / name for name in setting_names()
+        ]
+
+    def it_writes_files_that_configure_nothing_until_edited(self, tmp_path: Path):
+        proc_write_settings(tmp_path)
+        for name in setting_names():
+            assert parse_lines((tmp_path / name).read_text()) == [], name
+
+    def it_never_overwrites_an_answer_already_given(self, tmp_path: Path):
+        """These are the user's files; an upgrade must not silently reset them."""
+        mine = tmp_path / "purge-after-days"
+        mine.write_text("90\n")
+        assert proc_write_settings(tmp_path) == [
+            tmp_path / name for name in setting_names() if name != "purge-after-days"
+        ]
+        assert mine.read_text() == "90\n"

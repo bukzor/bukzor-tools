@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from .config import load_config, missing_settings, setting_names
-from .install import UNITS, proc_install, proc_write_settings, unit_dir
+from .install import HERE, UNITS, proc_install, proc_write_settings, unit_dir
 
 
 class DescribeUnitDir:
@@ -37,6 +37,18 @@ class DescribeProcInstall:
         stale.write_text("[Unit]\nDescription=stale\n")
         proc_install(tmp_path)
         assert "stale" not in stale.read_text()
+
+    def it_links_rather_than_copies(self, tmp_path: Path):
+        """A copy is a unit that silently stops matching the package."""
+        proc_install(tmp_path)
+        linked = tmp_path / UNITS[0]
+        assert linked.is_symlink()
+        assert linked.resolve() == (HERE / UNITS[0]).resolve()
+
+    def it_relinks_an_existing_link(self, tmp_path: Path):
+        proc_install(tmp_path)
+        proc_install(tmp_path)
+        assert (tmp_path / UNITS[0]).is_symlink()
 
 
 class DescribeProcWriteSettings:

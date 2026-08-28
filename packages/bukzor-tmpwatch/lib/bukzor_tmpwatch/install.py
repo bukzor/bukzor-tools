@@ -3,8 +3,12 @@
 A wheel lands in a venv; `systemctl --user` reads only its own search path, and
 bukzor-tmpwatch refuses to run until every setting has a file. The units and the
 annotated settings ship beside this module so they are version-controlled and
-reviewable as a diff, and installation copies them out. Re-run after an upgrade
-to pick up a setting that did not exist before.
+reviewable as a diff, and installation puts them where they are read.
+
+Units are linked, settings are copied, and the difference is deliberate: a unit
+is ours and should never go stale against the package, while a settings file
+becomes yours the moment you edit it. Re-run after an upgrade to pick up a
+setting that did not exist before.
 
 Usage: bukzor-tmpwatch-install
 """
@@ -26,11 +30,19 @@ def unit_dir() -> Path:
 
 
 def proc_install(target: Path) -> list[Path]:
-    """Copy every unit into `target`, returning what was written."""
+    """Link every unit into `target`, returning what was written.
+
+    A link, not a copy: the package is installed editable, so an edited unit is
+    live after `systemctl --user daemon-reload` rather than waiting for someone
+    to remember to reinstall. This is also what `systemctl enable` does to a
+    unit that lives outside the search path.
+    """
     target.mkdir(parents=True, exist_ok=True)
     written = [target / name for name in UNITS]
     for name, dest in zip(UNITS, written):
-        shutil.copyfile(HERE / name, dest)
+        if dest.is_symlink() or dest.exists():
+            dest.unlink()
+        dest.symlink_to(HERE / name)
     return written
 
 
@@ -60,6 +72,7 @@ def main() -> int:
 
 
 __all__: Sequence[str] = (
+    "HERE",
     "UNITS",
     "proc_install",
     "proc_write_settings",

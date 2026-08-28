@@ -13,6 +13,7 @@ dotfiles.
 
 | package                                                     | command                                                                      | what it does                                                  |
 | ----------------------------------------------------------- | ---------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| [bukzor-tmpwatch](packages/bukzor-tmpwatch)                 | `bukzor-tmpwatch`, `-install`                                                | GC scratch dirs in two phases: quarantine, then purge          |
 | [claude-code-archeology](packages/claude-code-archeology)   | `claude-search`, `claude-inventory`, `claude-branch-list`, `-branch-extract` | find, resume and recover past Claude Code sessions            |
 | [claude-code-slug](packages/claude-code-slug)               | `claude-slug`, `claude-path`                                                 | Claude Code's `projects/<slug>/` path encoding                |
 | [git-localhost-store](packages/git-localhost-store)         | `git-localhost-store`, `-install`                                            | keep every `.git` in a central store, so `rm -rf` can't lose commits |
@@ -22,12 +23,15 @@ dotfiles.
 ## Install
 
 ```bash
-uv tool install .                             # everything, shims into ~/.local/bin
-uv tool install ./packages/upstream-replies   # or just one
+uv tool install --editable .                             # everything, shims into ~/.local/bin
+uv tool install --editable ./packages/upstream-replies   # or just one
 ```
 
-Upgrade after pulling: `uv tool upgrade bukzor-tools` (or
-`uv tool install . --force` from a working copy).
+`--editable` is load-bearing. Without it uv copies the source into the
+tool venv, and every command keeps running that copy -- silently, for as
+long as it takes you to notice. Editable, `git pull` is the upgrade.
+Reinstall only when a dependency changes, since those are still pinned
+at install time.
 
 `git-localhost-store` wants one step more, every time it moves: git
 looks for its hooks outside any venv, so `git-localhost-store-install`

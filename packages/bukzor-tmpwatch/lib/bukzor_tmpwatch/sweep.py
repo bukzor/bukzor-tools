@@ -2,18 +2,34 @@
 
 Nothing is deleted that was not first quarantined somewhere visible: an idle
 top-level entry moves to `<root>/<quarantine dir>/<sweep date>/`, and a whole
-quarantine batch is deleted once its own datestamp is old enough.
+quarantine batch is deleted once its own datestamp is old enough. The two
+phases are separate passes so that a report can group by phase across roots.
 """
 
 import os
 import shutil
 from collections.abc import Container, Iterator, Sequence
+from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
 
 from .config import Config
 
 SECONDS_PER_DAY = 24 * 60 * 60
+
+
+@dataclass(frozen=True)
+class Change:
+    """One entry a sweep moved or deleted, or would have.
+
+    The destination is not recorded: it is the same for every change of one
+    kind, so the report states it once in a header rather than on every line.
+    """
+
+    verb: str
+    root: Path
+    name: str
+    detail: str = ""
 
 
 def parse_datestamp(name: str) -> date | None:
@@ -80,37 +96,43 @@ def entry_count(path: Path) -> int:
     return sum(1 for _ in path.rglob("*"))
 
 
-def proc_sweep(
+def proc_quarantine(
     root: Path, config: Config, now: float, today: date, dry_run: bool
-) -> Iterator[str]:
-    """Quarantine then purge `root`, yielding one report line per action."""
-    quarantine = root / config.quarantine_dir
-    batch = quarantine / today.isoformat()
+) -> Iterator[Change]:
+    """Move every idle entry in `root` into today's batch."""
+    batch = root / config.quarantine_dir / today.isoformat()
     # Quarantining the quarantine would rename a directory into its own
     # subdirectory, so it is exempt whatever the configuration says.
     keep = config.keep | {config.quarantine_dir}
-    idle_cutoff = now - config.quarantine_after_days * SECONDS_PER_DAY
-    purge_cutoff = today - timedelta(days=config.purge_after_days)
-    for entry in idle_entries(root, idle_cutoff, keep):
+    cutoff = now - config.quarantine_after_days * SECONDS_PER_DAY
+    for entry in idle_entries(root, cutoff, keep):
         if not dry_run:
             batch.mkdir(parents=True, exist_ok=True)
             shutil.move(entry, batch / entry.name)
-        verb = "would quarantine" if dry_run else "quarantined"
-        yield f"{verb} {entry} -> {batch}/"
-    for stale in expired_batches(quarantine, purge_cutoff):
+        yield Change("quarantine", root, entry.name)
+
+
+def proc_purge(
+    root: Path, config: Config, today: date, dry_run: bool
+) -> Iterator[Change]:
+    """Delete every quarantine batch in `root` that has waited long enough."""
+    quarantine = root / config.quarantine_dir
+    cutoff = today - timedelta(days=config.purge_after_days)
+    for stale in expired_batches(quarantine, cutoff):
         count = entry_count(stale)
         if not dry_run:
             shutil.rmtree(stale)
-        verb = "would purge" if dry_run else "purged"
-        yield f"{verb} {stale} ({count} entries)"
+        yield Change("purge", root, stale.name, f" ({count} entries)")
 
 
 __all__: Sequence[str] = (
     "SECONDS_PER_DAY",
+    "Change",
     "entry_count",
     "expired_batches",
     "has_recent_write",
     "idle_entries",
     "parse_datestamp",
-    "proc_sweep",
+    "proc_purge",
+    "proc_quarantine",
 )

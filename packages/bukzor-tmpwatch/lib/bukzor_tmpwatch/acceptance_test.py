@@ -27,6 +27,7 @@ INSTALLER = BIN / "bukzor-tmpwatch-install"
 PACKAGE = Path(__file__).parent
 REPO = PACKAGE.parents[3]
 DAY = 24 * 60 * 60
+OLD = 1_000_000_000.0
 
 
 def has_user_systemd() -> bool:
@@ -89,6 +90,39 @@ class DescribeTheCommand:
         assert done.returncode == 0, done.stderr
         assert "would quarantine" in done.stdout
         assert (scratch / "stale.txt").exists()
+
+    def it_states_the_action_and_root_once_for_the_whole_list(self, tmp_path: Path):
+        """The report is grouped, not one self-repeating line per entry."""
+        scratch = tmp_path / "scratch"
+        stale_file(scratch, "README.md", days=60)
+        stale_file(scratch, "notes.txt", days=60)
+        assert tmpwatch(tmp_path, str(scratch)).stdout == (
+            f"# would quarantine, to lost-and-found/{date.today().isoformat()}/\n"
+            f"{scratch}/\n"
+            "  README.md\n"
+            "  notes.txt\n"
+        )
+
+    def it_tolerates_a_reader_that_stops_early(self, tmp_path: Path):
+        """`bukzor-tmpwatch | head` must not spray a traceback."""
+        scratch = tmp_path / "scratch"
+        scratch.mkdir()
+        # Enough output to overflow the stdout buffer, so the write fails while
+        # head(1) is demonstrably gone, not merely at interpreter shutdown.
+        for index in range(500):
+            entry = scratch / f"entry-{index:04d}-named-long-enough-to-fill-it"
+            entry.write_text("")
+            os.utime(entry, (OLD, OLD))
+        os.utime(scratch, (OLD, OLD))
+        settings_dir(tmp_path)
+        done = run(
+            f"'{COMMAND}' '{scratch}' | head -2",
+            shell=True,
+            capture_output=True,
+            text=True,
+            env=isolated(tmp_path),
+        )
+        assert done.stderr == ""
 
     def it_says_on_stderr_how_to_apply(self, tmp_path: Path):
         scratch = tmp_path / "scratch"

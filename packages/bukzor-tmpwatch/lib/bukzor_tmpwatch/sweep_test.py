@@ -5,12 +5,14 @@ from pathlib import Path
 
 from .config_test import DEFAULTS
 from .sweep import (
+    Change,
     entry_count,
     expired_batches,
     has_recent_write,
     idle_entries,
     parse_datestamp,
-    proc_sweep,
+    proc_purge,
+    proc_quarantine,
 )
 
 OLD = 1_000_000_000.0
@@ -21,7 +23,6 @@ QUARANTINE = DEFAULTS.quarantine_dir
 # Anything idle at all is quarantined, and a batch is purged a month later, so
 # a test says what it means by the timestamps it sets rather than by arithmetic.
 NOW = replace(DEFAULTS, quarantine_after_days=0, purge_after_days=30)
-NEVER_PURGE = replace(NOW, purge_after_days=3650)
 
 
 def age(path: Path, when: float) -> None:
@@ -108,51 +109,63 @@ class DescribeEntryCount:
         assert entry_count(tmp_path) == 2
 
 
-class DescribeProcSweep:
+class DescribeProcQuarantine:
     def it_moves_an_idle_entry_into_a_dated_batch(self, tmp_path: Path):
         make_tree(tmp_path, "stale/deep.txt", OLD)
-        list(proc_sweep(tmp_path, NEVER_PURGE, CUTOFF, TODAY, dry_run=False))
+        assert list(proc_quarantine(tmp_path, NOW, CUTOFF, TODAY, False)) == [
+            Change("quarantine", tmp_path, "stale")
+        ]
         assert (tmp_path / QUARANTINE / "2026-06-01/stale/deep.txt").exists()
-
-    def it_deletes_an_expired_batch(self, tmp_path: Path):
-        make_tree(tmp_path, f"{QUARANTINE}/2026-01-01/old.txt", OLD)
-        list(proc_sweep(tmp_path, NOW, CUTOFF, TODAY, dry_run=False))
-        assert not (tmp_path / QUARANTINE / "2026-01-01").exists()
 
     def it_never_quarantines_the_quarantine_itself(self, tmp_path: Path):
         """Renaming a directory into its own subdirectory cannot be undone."""
         make_tree(tmp_path, f"{QUARANTINE}/2026-05-30/recent.txt", OLD)
-        list(proc_sweep(tmp_path, NEVER_PURGE, CUTOFF, TODAY, dry_run=False))
-        assert (tmp_path / QUARANTINE / "2026-05-30/recent.txt").exists()
-
-    def it_keeps_a_batch_younger_than_the_purge_wait(self, tmp_path: Path):
-        make_tree(tmp_path, f"{QUARANTINE}/2026-05-30/recent.txt", OLD)
-        list(proc_sweep(tmp_path, NOW, CUTOFF, TODAY, dry_run=False))
+        assert list(proc_quarantine(tmp_path, NOW, CUTOFF, TODAY, False)) == []
         assert (tmp_path / QUARANTINE / "2026-05-30/recent.txt").exists()
 
     def it_honors_a_renamed_quarantine(self, tmp_path: Path):
         make_tree(tmp_path, "stale/deep.txt", OLD)
-        config = replace(NEVER_PURGE, quarantine_dir="attic")
-        list(proc_sweep(tmp_path, config, CUTOFF, TODAY, dry_run=False))
+        config = replace(NOW, quarantine_dir="attic")
+        list(proc_quarantine(tmp_path, config, CUTOFF, TODAY, False))
         assert (tmp_path / "attic/2026-06-01/stale/deep.txt").exists()
 
     def it_exempts_the_names_the_config_keeps(self, tmp_path: Path):
         make_tree(tmp_path, "notes/old.txt", OLD)
-        config = replace(NEVER_PURGE, keep=frozenset({"notes"}))
-        list(proc_sweep(tmp_path, config, CUTOFF, TODAY, dry_run=False))
+        config = replace(NOW, keep=frozenset({"notes"}))
+        assert list(proc_quarantine(tmp_path, config, CUTOFF, TODAY, False)) == []
         assert (tmp_path / "notes/old.txt").exists()
 
     def it_waits_the_configured_number_of_days(self, tmp_path: Path):
         """A day short of the wait is not idle yet."""
         make_tree(tmp_path, "stale/deep.txt", CUTOFF - 9 * 86400)
-        config = replace(NEVER_PURGE, quarantine_after_days=10)
-        list(proc_sweep(tmp_path, config, CUTOFF, TODAY, dry_run=False))
+        config = replace(NOW, quarantine_after_days=10)
+        assert list(proc_quarantine(tmp_path, config, CUTOFF, TODAY, False)) == []
         assert (tmp_path / "stale/deep.txt").exists()
 
     def it_changes_nothing_when_dry(self, tmp_path: Path):
         make_tree(tmp_path, "stale/deep.txt", OLD)
-        make_tree(tmp_path, f"{QUARANTINE}/2026-01-01/old.txt", OLD)
-        report = list(proc_sweep(tmp_path, NOW, CUTOFF, TODAY, dry_run=True))
+        assert list(proc_quarantine(tmp_path, NOW, CUTOFF, TODAY, True)) == [
+            Change("quarantine", tmp_path, "stale")
+        ]
         assert (tmp_path / "stale/deep.txt").exists()
+
+
+class DescribeProcPurge:
+    def it_deletes_an_expired_batch(self, tmp_path: Path):
+        make_tree(tmp_path, f"{QUARANTINE}/2026-01-01/old.txt", OLD)
+        assert list(proc_purge(tmp_path, NOW, TODAY, False)) == [
+            Change("purge", tmp_path, "2026-01-01", " (1 entries)")
+        ]
+        assert not (tmp_path / QUARANTINE / "2026-01-01").exists()
+
+    def it_keeps_a_batch_younger_than_the_purge_wait(self, tmp_path: Path):
+        make_tree(tmp_path, f"{QUARANTINE}/2026-05-30/recent.txt", OLD)
+        assert list(proc_purge(tmp_path, NOW, TODAY, False)) == []
+        assert (tmp_path / QUARANTINE / "2026-05-30/recent.txt").exists()
+
+    def it_changes_nothing_when_dry(self, tmp_path: Path):
+        make_tree(tmp_path, f"{QUARANTINE}/2026-01-01/old.txt", OLD)
+        assert list(proc_purge(tmp_path, NOW, TODAY, True)) == [
+            Change("purge", tmp_path, "2026-01-01", " (1 entries)")
+        ]
         assert (tmp_path / QUARANTINE / "2026-01-01/old.txt").exists()
-        assert [line.split()[0] for line in report] == ["would", "would"]

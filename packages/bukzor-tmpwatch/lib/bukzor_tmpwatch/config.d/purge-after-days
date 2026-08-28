@@ -2,5 +2,4 @@
 # sweep date its name records.
 # Nothing is lost until quarantine-after-days plus this many have passed.
 
-# default:
-# 15
+15

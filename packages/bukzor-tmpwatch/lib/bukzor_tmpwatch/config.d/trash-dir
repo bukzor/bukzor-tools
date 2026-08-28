@@ -3,5 +3,4 @@
 # what separates your scratch from a vendored directory of the same name.
 # Emptied: no search; sweep only the roots listed in `roots`.
 
-# default:
-# trash
+trash

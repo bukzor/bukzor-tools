@@ -11,7 +11,7 @@ and move it back.
 
 Which directories are swept, how long each wait is, and what is exempt are all
 settings, one plain-text file each under $XDG_CONFIG_HOME/bukzor-tmpwatch/.
-Run bukzor-tmpwatch-install to write the annotated defaults there.
+Every one must exist; run bukzor-tmpwatch-install to write them.
 """
 
 import argparse
@@ -22,7 +22,7 @@ from dataclasses import replace
 from datetime import date
 from pathlib import Path
 
-from .config import config_dir, load_config
+from .config import MissingSettings, config_dir, load_config
 from .roots import scratch_roots
 from .sweep import proc_sweep
 
@@ -63,7 +63,15 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args(sys.argv[1:])
-    config = load_config(config_dir())
+    try:
+        config = load_config(config_dir())
+    except MissingSettings as error:
+        # Defaulting would let this delete things by a rule nobody chose.
+        (missing,) = error.args
+        for path in missing:
+            print(f"no such setting: {path}", file=sys.stderr)
+        print("run bukzor-tmpwatch-install to write the defaults", file=sys.stderr)
+        return 2
     if args.quarantine_after is not None:
         config = replace(config, quarantine_after_days=args.quarantine_after)
     if args.purge_after is not None:

@@ -2,5 +2,4 @@
 # Emptied: no directories of your choosing, only the ones found by the search
 # that trash-dir configures.
 
-# default:
-# ~/tmp
+~/tmp

@@ -19,6 +19,7 @@ from subprocess import CompletedProcess, run
 import pytest
 
 from .config import APP, setting_names
+from .install import proc_write_settings
 
 BIN = Path(sys.executable).parent
 COMMAND = BIN / "bukzor-tmpwatch"
@@ -44,13 +45,21 @@ def isolated(home: Path) -> dict[str, str]:
 
 
 def settings_dir(home: Path) -> Path:
-    """The settings directory of an isolated run, created."""
+    """The settings directory of an isolated run, holding every default."""
     path = home / "config" / APP
-    path.mkdir(parents=True, exist_ok=True)
+    proc_write_settings(path)
     return path
 
 
 def tmpwatch(home: Path, *args: str) -> CompletedProcess[str]:
+    settings_dir(home)
+    return run(
+        [str(COMMAND), *args], capture_output=True, text=True, env=isolated(home)
+    )
+
+
+def tmpwatch_unconfigured(home: Path, *args: str) -> CompletedProcess[str]:
+    """Run without seeding, to see what an unconfigured machine is told."""
     return run(
         [str(COMMAND), *args], capture_output=True, text=True, env=isolated(home)
     )
@@ -91,6 +100,20 @@ class DescribeTheCommand:
         scratch.mkdir()
         done = tmpwatch(tmp_path, str(scratch))
         assert (done.stdout, done.stderr) == ("", "")
+
+    def it_refuses_to_guess_when_there_are_no_settings(self, tmp_path: Path):
+        """Silently defaulting would delete by a rule nobody chose."""
+        done = tmpwatch_unconfigured(tmp_path, str(tmp_path))
+        assert done.returncode == 2, done
+        assert "bukzor-tmpwatch-install" in done.stderr
+        assert "quarantine-after-days" in done.stderr
+
+    def it_names_only_the_setting_that_is_gone(self, tmp_path: Path):
+        (settings_dir(tmp_path) / "keep").unlink()
+        done = tmpwatch_unconfigured(tmp_path, str(tmp_path))
+        assert done.returncode == 2, done
+        assert "roots" not in done.stderr
+        assert done.stderr.count("no such setting") == 1
 
     def it_refuses_the_flag_that_used_to_mean_dry_run(self, tmp_path: Path):
         done = tmpwatch(tmp_path, "-n", str(tmp_path))

@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from .config import parse_lines, setting_names
+from .config import load_config, missing_settings, setting_names
 from .install import UNITS, proc_install, proc_write_settings, unit_dir
 
 
@@ -46,10 +46,11 @@ class DescribeProcWriteSettings:
             target / name for name in setting_names()
         ]
 
-    def it_writes_files_that_configure_nothing_until_edited(self, tmp_path: Path):
+    def it_writes_settings_the_command_can_load(self, tmp_path: Path):
+        """The whole point: after this, bukzor-tmpwatch has what it needs."""
         proc_write_settings(tmp_path)
-        for name in setting_names():
-            assert parse_lines((tmp_path / name).read_text()) == [], name
+        assert missing_settings(tmp_path) == []
+        assert load_config(tmp_path).quarantine_dir == "lost-and-found"
 
     def it_never_overwrites_an_answer_already_given(self, tmp_path: Path):
         """These are the user's files; an upgrade must not silently reset them."""

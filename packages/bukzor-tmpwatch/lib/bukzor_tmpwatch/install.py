@@ -1,10 +1,10 @@
 """Put this command's files where systemd and the user will find them.
 
 A wheel lands in a venv; `systemctl --user` reads only its own search path, and
-nobody discovers settings that exist solely as defaults in the source. The
-units and the annotated setting templates ship beside this module so they are
-version-controlled and reviewable as a diff, and installation copies them out.
-Re-run after an upgrade.
+bukzor-tmpwatch refuses to run until every setting has a file. The units and the
+annotated settings ship beside this module so they are version-controlled and
+reviewable as a diff, and installation copies them out. Re-run after an upgrade
+to pick up a setting that did not exist before.
 
 Usage: bukzor-tmpwatch-install
 """
@@ -38,8 +38,7 @@ def proc_write_settings(target: Path) -> list[Path]:
     """Copy each missing setting template into `target`, returning what was written.
 
     A file already there is the user's answer and is never overwritten, so this
-    is safe to re-run. Every template is entirely comments, so a fresh install
-    documents the settings without changing any of them.
+    is safe to re-run: it only ever fills in settings that have no file yet.
     """
     target.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []

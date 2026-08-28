@@ -1,5 +1,4 @@
 # Whole days an entry must go unwritten -- anywhere inside it, however deep --
 # before a sweep moves it into the quarantine directory.
 
-# default:
-# 15
+15

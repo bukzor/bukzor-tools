@@ -3,11 +3,10 @@
 # skipped whether or not it is named here.
 # Emptied: descend everywhere.
 
-# default:
-# .git
-# .cache
-# .npm
-# .rustup
-# .venv
-# node_modules
-# target
+.git
+.cache
+.npm
+.rustup
+.venv
+node_modules
+target

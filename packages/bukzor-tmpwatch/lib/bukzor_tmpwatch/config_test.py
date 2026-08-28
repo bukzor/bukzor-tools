@@ -15,10 +15,12 @@ from .config import (
     DEFAULT_TRASH_DIR,
     TEMPLATES,
     Config,
+    MissingSettings,
     boot_stamp,
     config_dir,
     expand_keep,
     load_config,
+    missing_settings,
     parse_lines,
     read_days,
     read_value,
@@ -26,6 +28,7 @@ from .config import (
     setting_names,
     xdg_config_home,
 )
+from .install import proc_write_settings
 
 # A Config for tests elsewhere: the real defaults, but with nothing exempt and
 # no roots of its own, so a test states only what it is about.
@@ -45,15 +48,10 @@ def write(directory: Path, name: str, text: str) -> None:
     (directory / name).write_text(text)
 
 
-def documented_default(name: str) -> list[str]:
-    """The values a template file documents under its `# default:` marker."""
-    _, marker, tail = (TEMPLATES / name).read_text().partition("# default:\n")
-    assert marker, name
-    return [
-        line.removeprefix("#").strip()
-        for line in tail.splitlines()
-        if line.strip().removeprefix("#").strip()
-    ]
+def seed(directory: Path) -> Path:
+    """A settings directory holding every default, as the installer leaves it."""
+    proc_write_settings(directory)
+    return directory
 
 
 class DescribeParseLines:
@@ -87,44 +85,61 @@ class DescribeConfigDir:
         assert config_dir() == tmp_path / APP
 
 
+class DescribeMissingSettings:
+    def it_names_every_file_an_empty_directory_lacks(self, tmp_path: Path):
+        assert missing_settings(tmp_path) == [
+            tmp_path / name for name in setting_names()
+        ]
+
+    def it_names_nothing_once_the_settings_are_written(self, tmp_path: Path):
+        assert missing_settings(seed(tmp_path)) == []
+
+    def it_names_only_what_is_gone(self, tmp_path: Path):
+        seed(tmp_path)
+        (tmp_path / "keep").unlink()
+        assert missing_settings(tmp_path) == [tmp_path / "keep"]
+
+
 class DescribeReadValues:
-    def it_defaults_when_there_is_no_file(self, tmp_path: Path):
-        assert read_values(tmp_path, "roots", ("~/tmp",)) == ["~/tmp"]
+    def it_refuses_a_setting_that_has_no_file(self, tmp_path: Path):
+        """Guessing a default is how a sweep silently disagrees with its owner."""
+        with pytest.raises(MissingSettings):
+            read_values(tmp_path, "roots")
 
     def it_reads_one_value_per_line(self, tmp_path: Path):
         write(tmp_path, "prune", "target\n.venv\n")
-        assert read_values(tmp_path, "prune", ()) == ["target", ".venv"]
+        assert read_values(tmp_path, "prune") == ["target", ".venv"]
 
     def it_takes_an_emptied_file_as_the_empty_list(self, tmp_path: Path):
         """Emptying a file is how a setting is switched off."""
         write(tmp_path, "prune", "# nothing\n")
-        assert read_values(tmp_path, "prune", ("target",)) == []
+        assert read_values(tmp_path, "prune") == []
 
     def it_spells_a_setting_with_dashes(self, tmp_path: Path):
         write(tmp_path, "trash-dir", "scratch\n")
-        assert read_values(tmp_path, "trash_dir", ()) == ["scratch"]
+        assert read_values(tmp_path, "trash_dir") == ["scratch"]
 
 
 class DescribeReadValue:
     def it_refuses_a_second_value(self, tmp_path: Path):
         write(tmp_path, "trash-dir", "a\nb\n")
         with pytest.raises(AssertionError):
-            read_value(tmp_path, "trash_dir", "trash")
+            read_value(tmp_path, "trash_dir")
 
     def it_is_empty_when_the_file_is(self, tmp_path: Path):
         write(tmp_path, "trash-dir", "")
-        assert read_value(tmp_path, "trash_dir", "trash") == ""
+        assert read_value(tmp_path, "trash_dir") == ""
 
 
 class DescribeReadDays:
     def it_reads_a_whole_number(self, tmp_path: Path):
         write(tmp_path, "purge-after-days", "3\n")
-        assert read_days(tmp_path, "purge_after_days", 15) == 3
+        assert read_days(tmp_path, "purge_after_days") == 3
 
     def it_refuses_anything_that_is_not_one(self, tmp_path: Path):
         write(tmp_path, "purge-after-days", "-1\n")
         with pytest.raises(AssertionError):
-            read_days(tmp_path, "purge_after_days", 15)
+            read_days(tmp_path, "purge_after_days")
 
 
 class DescribeBootStamp:
@@ -163,8 +178,18 @@ class DescribeConfig:
 
 
 class DescribeLoadConfig:
-    def it_is_all_defaults_for_a_directory_that_does_not_exist(self, tmp_path: Path):
-        loaded = load_config(tmp_path / "absent")
+    def it_refuses_a_directory_that_does_not_exist(self, tmp_path: Path):
+        with pytest.raises(MissingSettings):
+            load_config(tmp_path / "absent")
+
+    def it_refuses_a_directory_with_one_setting_gone(self, tmp_path: Path):
+        seed(tmp_path)
+        (tmp_path / "purge-after-days").unlink()
+        with pytest.raises(MissingSettings):
+            load_config(tmp_path)
+
+    def it_reads_what_the_installer_wrote(self, tmp_path: Path):
+        loaded = load_config(seed(tmp_path))
         assert loaded.roots == (Path("~/tmp").expanduser(),)
         assert loaded.prune == frozenset(DEFAULT_PRUNE)
         assert loaded.trash_dir == DEFAULT_TRASH_DIR
@@ -176,6 +201,7 @@ class DescribeLoadConfig:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ):
         monkeypatch.setenv("HOME", "/home/someone")
+        seed(tmp_path)
         write(tmp_path, "roots", "~/scratch\n")
         assert load_config(tmp_path).roots == (Path("/home/someone/scratch"),)
 
@@ -207,17 +233,14 @@ class DescribeTheTemplates:
             setting_names()
         )
 
-    def it_behaves_like_no_config_until_edited(self):
-        for name in setting_names():
-            assert parse_lines((TEMPLATES / name).read_text()) == [], name
+    def it_holds_the_default_the_code_declares(self):
+        def values(name: str) -> list[str]:
+            return parse_lines((TEMPLATES / name).read_text())
 
-    def it_documents_the_default_the_code_actually_uses(self):
-        assert documented_default("roots") == list(DEFAULT_ROOTS)
-        assert documented_default("prune") == list(DEFAULT_PRUNE)
-        assert documented_default("keep") == list(DEFAULT_KEEP)
-        assert documented_default("trash-dir") == [DEFAULT_TRASH_DIR]
-        assert documented_default("quarantine-dir") == [DEFAULT_QUARANTINE_DIR]
-        assert documented_default("quarantine-after-days") == [
-            str(DEFAULT_QUARANTINE_AFTER_DAYS)
-        ]
-        assert documented_default("purge-after-days") == [str(DEFAULT_PURGE_AFTER_DAYS)]
+        assert values("roots") == list(DEFAULT_ROOTS)
+        assert values("prune") == list(DEFAULT_PRUNE)
+        assert values("keep") == list(DEFAULT_KEEP)
+        assert values("trash-dir") == [DEFAULT_TRASH_DIR]
+        assert values("quarantine-dir") == [DEFAULT_QUARANTINE_DIR]
+        assert values("quarantine-after-days") == [str(DEFAULT_QUARANTINE_AFTER_DAYS)]
+        assert values("purge-after-days") == [str(DEFAULT_PURGE_AFTER_DAYS)]

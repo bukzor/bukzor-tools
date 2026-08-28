@@ -1,0 +1,10 @@
+[Unit]
+Description=Quarantine idle scratch, purge old quarantine batches
+
+[Service]
+Type=oneshot
+# The console script uv(1) puts on PATH; re-run bukzor-tmpwatch-install after
+# reinstalling to somewhere else.
+ExecStart=%h/.local/bin/bukzor-tmpwatch
+Nice=10
+IOSchedulingClass=idle

@@ -9,6 +9,7 @@ dependencies = []
 
 [project.scripts]
 bukzor-tmpwatch = "bukzor_tmpwatch.cli:main"
+bukzor-tmpwatch-install = "bukzor_tmpwatch.install:main"
 
 [project.urls]
 Repository = "https://github.com/bukzor/bukzor-tools"

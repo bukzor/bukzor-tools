@@ -19,6 +19,7 @@ dependencies = [
 # Re-exported from the member packages, so `uv tool install bukzor-tools`
 # yields every command: uv only creates shims for the named package.
 bukzor-tmpwatch = "bukzor_tmpwatch.cli:main"
+bukzor-tmpwatch-install = "bukzor_tmpwatch.install:main"
 claude-slug = "claude_code_slug.slug:main"
 claude-path = "claude_code_slug.path:main"
 claude-search = "claude_code_archeology.search:main"

@@ -14,7 +14,7 @@ import sys
 import zipfile
 from datetime import date
 from pathlib import Path
-from subprocess import CompletedProcess, run
+from subprocess import PIPE, STDOUT, CompletedProcess, run
 
 import pytest
 
@@ -107,10 +107,12 @@ class DescribeTheCommand:
         """`bukzor-tmpwatch | head` must not spray a traceback."""
         scratch = tmp_path / "scratch"
         scratch.mkdir()
-        # Enough output to overflow the stdout buffer, so the write fails while
-        # head(1) is demonstrably gone, not merely at interpreter shutdown.
+        # The report must exceed a pipe's 64KiB capacity. Below that the child
+        # can write everything and exit before head(1) ever closes the pipe,
+        # and no EPIPE happens at all.
+        padding = "x" * 220
         for index in range(500):
-            entry = scratch / f"entry-{index:04d}-named-long-enough-to-fill-it"
+            entry = scratch / f"entry-{index:04d}-{padding}"
             entry.write_text("")
             os.utime(entry, (OLD, OLD))
         os.utime(scratch, (OLD, OLD))
@@ -128,6 +130,20 @@ class DescribeTheCommand:
         scratch = tmp_path / "scratch"
         stale_file(scratch, "stale.txt", days=60)
         assert "--write to apply" in tmpwatch(tmp_path, str(scratch)).stderr
+
+    def it_prints_the_hint_after_the_report_it_comments_on(self, tmp_path: Path):
+        """Block-buffered stdout would otherwise let the hint jump the queue."""
+        scratch = tmp_path / "scratch"
+        stale_file(scratch, "stale.txt", days=60)
+        settings_dir(tmp_path)
+        merged = run(
+            [str(COMMAND), str(scratch)],
+            stdout=PIPE,
+            stderr=STDOUT,
+            text=True,
+            env=isolated(tmp_path),
+        )
+        assert merged.stdout.splitlines()[-1].startswith("nothing changed")
 
     def it_stays_quiet_when_there_is_nothing_to_do(self, tmp_path: Path):
         scratch = tmp_path / "scratch"

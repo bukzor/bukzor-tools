@@ -148,6 +148,9 @@ def main() -> int:
     for line in format_changes(changes, config, today, dry_run):
         print(line)
     if changes and dry_run:
+        # Through a pipe stdout is block-buffered and stderr is not, so without
+        # this the hint overtakes the report it is commenting on.
+        sys.stdout.flush()
         # The default is the opposite of tmpwatch's, so say so once.
         print(
             f"nothing changed; --write to apply these {len(changes)}", file=sys.stderr

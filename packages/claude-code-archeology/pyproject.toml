@@ -12,6 +12,8 @@ claude-search = "claude_code_archeology.search:main"
 claude-inventory = "claude_code_archeology.inventory:main"
 claude-branch-list = "claude_code_archeology.branch_list:main"
 claude-branch-extract = "claude_code_archeology.branch_extract:main"
+claude-jsonl-truncate = "claude_code_archeology.truncate:main"
+claude-agent-unstop = "claude_code_archeology.unstop:main"
 
 [project.urls]
 Repository = "https://github.com/bukzor/bukzor-tools"

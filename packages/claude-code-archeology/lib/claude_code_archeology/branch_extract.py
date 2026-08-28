@@ -18,8 +18,8 @@ belongs to the resumed session, where `/rewind` offers every prompt of
 yours as a cut point and drops the later era from context when you take
 one. An option to cut here instead was tried and removed: for the states
 `/rewind` reaches it was a second spelling of one operation, and for the
-states it does not -- a tail dropped mid-turn -- the useful form is
-in-place surgery on the session that already owns the id, not a new file
+states it does not -- a tail dropped mid-turn -- the cut is
+`claude-jsonl-truncate`'s job, in place or to a fresh id
 (`Skill(claude-code-surgery)`). Add nothing here to make extraction stop
 early; the ability to name a record is not a reason to cut at it.
 
@@ -48,7 +48,7 @@ import json
 import re
 import sys
 import uuid as uuidlib
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 
 from . import session as session_mod
@@ -196,7 +196,7 @@ def project_dir_for_cwd(cwd: str) -> Path:
 
 
 def rewrite(
-    records: Iterator[Node], tip: Node, new_session_id: str, cwd: str | None = None
+    records: Sequence[Node], tip: Node, new_session_id: str, cwd: str | None = None
 ) -> Iterator[Record]:
     """Pure: retarget records at a new session, pinning tip as its leaf.
 
@@ -213,20 +213,38 @@ def rewrite(
     ...              "sessionId": "old", "type": "user"}),
     ...     Node(1, {"type": "last-prompt", "sessionId": "old", "leafUuid": "gone"}),
     ... ]))
-    >>> for rec in rewrite(iter(sess.nodes), sess.by_uuid["a"], "new"):
+    >>> for rec in rewrite(list(sess.nodes), sess.by_uuid["a"], "new"):
     ...     print(sorted(rec.items()))
     [('parentUuid', None), ('sessionId', 'new'), ('type', 'user'), ('uuid', 'a')]
     [('leafUuid', 'a'), ('sessionId', 'new'), ('type', 'last-prompt')]
+
+    Only the *final* last-prompt is repointed -- earlier ones are
+    historical record, and Claude Code reads only the last. (Extraction
+    collapses history so it sees one at most; a prefix cut keeps them.)
+
+    >>> sess2 = build_session(Path("x"), iter([
+    ...     Node(0, {"uuid": "a", "parentUuid": None, "type": "user"}),
+    ...     Node(1, {"type": "last-prompt", "leafUuid": "old-a"}),
+    ...     Node(2, {"uuid": "b", "parentUuid": "a", "type": "assistant"}),
+    ...     Node(3, {"type": "last-prompt", "leafUuid": "old-b"}),
+    ... ]))
+    >>> for rec in rewrite(list(sess2.nodes), sess2.by_uuid["b"], "new"):
+    ...     if rec.get("type") == "last-prompt":
+    ...         print(rec["leafUuid"])
+    old-a
+    b
     """
-    pinned = False
+    final_prompt = max(
+        (n.line for n in records if n.type == "last-prompt"), default=None
+    )
     for node in records:
         rec = dict(promoted(node.record, cwd))
         if "sessionId" in rec:
             rec["sessionId"] = new_session_id
-        if rec.get("type") == "last-prompt":
-            rec["leafUuid"], pinned = tip.uuid, True
+        if rec.get("type") == "last-prompt" and node.line == final_prompt:
+            rec["leafUuid"] = tip.uuid
         yield rec
-    if not pinned:
+    if final_prompt is None:
         yield {"type": "last-prompt", "sessionId": new_session_id, "leafUuid": tip.uuid}
 
 
@@ -288,7 +306,7 @@ def main() -> int:
     out.parent.mkdir(parents=True, exist_ok=True)
 
     kept = branch_records(sess, tip)
-    count = write_jsonl(rewrite(iter(kept), tip, new_sid, args.as_session), out)
+    count = write_jsonl(rewrite(kept, tip, new_sid, args.as_session), out)
     if args.as_session:
         print(
             "promoted: the agent definition does not come with it --"

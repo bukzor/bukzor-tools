@@ -62,7 +62,8 @@ def report_tail(jsonl: Path) -> None:
     if dangling:
         print(
             f"tail is dirty (dangling tool_use {sorted(dangling)});"
-            " run claude-jsonl-truncate before resuming",
+            " run claude-jsonl-truncate --in-place before resuming"
+            " (the agent is bound to this file's id)",
             file=sys.stderr,
         )
     else:

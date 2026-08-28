@@ -1,32 +1,34 @@
-"""Cut a session JSONL's tail in place, so the same id resumes clean.
+"""Cut a session JSONL's tail -- the cut `/rewind` cannot reach.
 
-The write-side counterpart of branch extraction: extraction hands you a
-whole branch as a *new* session, while this drops a tail from the file
-that already owns the id -- the operation for a poisoned or unwanted
-ending that `/rewind` cannot reach (mid-turn tails, harness-injected
-turns). See `Skill(claude-code-surgery)` for when to do this at all.
+The operation for a poisoned or unwanted ending: mid-turn tails,
+harness-injected turns, an era that belonged to someone else. See
+`Skill(claude-code-surgery)` for when to do this at all.
 
-The cut is line surgery on the raw file: kept lines are preserved
-byte-for-byte, never re-serialized. Dropped records are gone from the
-transcript but not from disk -- a timestamped backup lands beside the
-file (or in --backup-dir) before anything is written.
+Two output modes; dry-run (neither) previews the plan and touches
+nothing:
 
-Refusals are the feature:
+- `--write` lands the kept prefix as a NEW session under a fresh id
+  (or --session-id), records retargeted exactly as branch extraction
+  does -- sessionId rewritten, resume leaf re-anchored on the kept
+  tip -- and prints the new file's path on stdout. The original is
+  never opened for writing, so this is safe even on a live session:
+  an append-only file's kept prefix is already frozen.
+- `--in-place` keeps the file's own id, for when the id is
+  load-bearing: a subagent is bound to its `agentId`, and a session's
+  `subagents/` stay reachable only under its own id. Kept lines are
+  preserved byte-for-byte; a timestamped backup lands beside the file
+  (or in --backup-dir) before anything is written; a file modified in
+  the last minute is presumed live and refused (--force-live
+  overrides). A kept `last-prompt` anchored in the dropped era is
+  reported; --repoint-leaf rewrites that one record (the sole
+  exception to never-rewrite).
 
-- a cut that would leave a `tool_use` with no `tool_result` is refused
-  outright, with the nearest clean boundary suggested;
-- a file modified in the last minute is presumed live and refused
-  (--force-live overrides); truncating under a live writer corrupts;
-- dry-run is the default -- only --write touches the file.
-
-A kept `last-prompt` whose `leafUuid` points into the dropped era is
-reported; --repoint-leaf rewrites that one record to anchor on the new
-tail (the same repair branch extraction performs, and the sole
-exception to never-rewrite).
+Either way, a cut that would leave a `tool_use` with no `tool_result`
+is refused outright, with the nearest clean boundary suggested.
 
 Usage:
-    claude-jsonl-truncate <session.jsonl> <ref> [--write] [...]
-    claude-jsonl-truncate <session.jsonl> --match REGEX [--write] [...]
+    claude-jsonl-truncate <session.jsonl> <ref> [--write | --in-place]
+    claude-jsonl-truncate <session.jsonl> --match REGEX [--write | --in-place]
     claude-jsonl-truncate <session.jsonl> --check
 
 `<ref>` is a uuid or line number naming the FIRST record to drop; with
@@ -42,11 +44,12 @@ import re
 import shutil
 import sys
 import time
+import uuid as uuidlib
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from . import session as session_mod
-from .branch_extract import resolve_ref
+from .branch_extract import resolve_ref, rewrite, write_jsonl
 from .session import JsonValue, Node, Record, Session
 
 LIVE_SECONDS = 60
@@ -145,6 +148,26 @@ def dangling_leaf(kept: Sequence[Node]) -> str | None:
     return leaf
 
 
+def leaf_anchor(kept: Sequence[Node]) -> Node:
+    """The record resume should anchor on: the newest kept speaker.
+
+    Mirrors `Session.tip_of`: resume anchors only on user/assistant
+    records, newest timestamp winning, line order breaking ties.
+
+    >>> a = Node(1, {"uuid": "a", "type": "user",
+    ...              "timestamp": "2026-01-01T00:00:00Z"})
+    >>> b = Node(2, {"uuid": "b", "type": "assistant",
+    ...              "timestamp": "2026-01-01T00:00:05Z"})
+    >>> late = Node(3, {"uuid": "c", "type": "attachment",
+    ...                 "timestamp": "2026-01-01T00:00:09Z"})
+    >>> leaf_anchor([a, b, late]).uuid
+    'b'
+    """
+    speakers = [n for n in kept if n.type in ("user", "assistant") and n.uuid]
+    assert speakers, [n.line for n in kept]
+    return max(speakers, key=lambda n: (n.timestamp or "", n.line))
+
+
 def find_match(sess: Session, raw_lines: Sequence[str], pattern: str) -> Node:
     """The first record whose raw line matches `pattern` -- the grep-shaped
     locator, for boundaries easier to name by content than by uuid.
@@ -208,7 +231,15 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--match", help="regex; first matching raw line is the cut point")
     p.add_argument("--check", action="store_true", help="diagnose the tail; no cut")
     p.add_argument(
-        "--write", action="store_true", help="perform the cut (default: dry run)"
+        "--write",
+        action="store_true",
+        help="write the kept prefix as a new session; prints its path (default: dry run)",
+    )
+    p.add_argument(
+        "--in-place", action="store_true", help="cut the file itself, keeping its id"
+    )
+    p.add_argument(
+        "--session-id", default=None, help="id for the new session (default: uuid4)"
     )
     p.add_argument(
         "--backup-dir", type=Path, default=None, help="default: beside the file"
@@ -224,6 +255,8 @@ def parse_args() -> argparse.Namespace:
     args = p.parse_args()
     if args.check == bool(args.ref or args.match) or (args.ref and args.match):
         p.error("name a cut point (ref | --match) or diagnose with --check")
+    if args.repoint_leaf and not args.in_place:
+        p.error("--repoint-leaf implies --in-place; the new-session mode re-anchors")
     return args
 
 
@@ -273,27 +306,32 @@ def main() -> int:
             print(f"nearest clean cut: {describe(clean)}", file=sys.stderr)
         return 3
 
-    kept_raw = list(raw[: target.line - 1])
     leaf = dangling_leaf(kept_nodes)
-    if leaf:
-        if args.repoint_leaf:
-            fixes = [n for n in kept_nodes if n.type == "last-prompt"]
-            line = fixes[-1].line - 1
-            kept_raw[line] = repoint_leaf_line(
-                kept_raw[line], kept_nodes[-1].uuid or ""
-            )
-            print(f"repointed leafUuid {leaf!r} -> new tail", file=sys.stderr)
-        else:
-            print(
-                f"warning: kept last-prompt anchors on dropped {leaf!r};"
-                " consider --repoint-leaf",
-                file=sys.stderr,
-            )
+    if leaf and not args.repoint_leaf:
+        print(
+            f"note: kept last-prompt anchors on dropped {leaf!r};"
+            " --in-place wants --repoint-leaf (a new session re-anchors itself)",
+            file=sys.stderr,
+        )
+    if args.in_place:
+        return cut_in_place(args, raw, kept_nodes, target.line - 1, leaf)
+    if args.write:
+        return cut_new_session(args, sess, kept_nodes)
+    print(
+        "dry run; --write lands a new session, --in-place cuts this file",
+        file=sys.stderr,
+    )
+    return 0
 
-    if not args.write:
-        print("dry run; use --write to perform the cut", file=sys.stderr)
-        return 0
 
+def cut_in_place(
+    args: argparse.Namespace,
+    raw: Sequence[str],
+    kept_nodes: Sequence[Node],
+    cut_line: int,
+    leaf: str | None,
+) -> int:
+    """Impure: the same-id cut -- liveness-guarded, backed up, byte-preserving."""
     age = time.time() - args.path.stat().st_mtime
     if age < LIVE_SECONDS and not args.force_live:
         print(
@@ -302,9 +340,35 @@ def main() -> int:
             file=sys.stderr,
         )
         return 4
+    kept_raw = list(raw[:cut_line])
+    if leaf and args.repoint_leaf:
+        anchor = leaf_anchor(kept_nodes)
+        fixes = [n for n in kept_nodes if n.type == "last-prompt"]
+        idx = fixes[-1].line - 1
+        kept_raw[idx] = repoint_leaf_line(kept_raw[idx], anchor.uuid or "")
+        print(f"repointed leafUuid {leaf!r} -> {anchor.uuid}", file=sys.stderr)
     backup = write_truncated(args.path, kept_raw, args.backup_dir or args.path.parent)
     print(f"backup: {backup}", file=sys.stderr)
+    print(f"cut done: now ends at {describe(kept_nodes[-1])}", file=sys.stderr)
+    print(args.path)
+    return 0
+
+
+def cut_new_session(
+    args: argparse.Namespace, sess: Session, kept_nodes: Sequence[Node]
+) -> int:
+    """Impure: land the kept prefix as a fresh resumable session."""
+    new_sid = args.session_id or str(uuidlib.uuid4())
+    out = session_mod.project_dir_for(sess.path) / f"{new_sid}.jsonl"
+    if out.exists():
+        print(f"refusing to overwrite existing: {out}", file=sys.stderr)
+        return 2
+    anchor = leaf_anchor(kept_nodes)
+    count = write_jsonl(rewrite(kept_nodes, anchor, new_sid), out)
     print(
-        f"cut done: {args.path} now ends at {describe(kept_nodes[-1])}", file=sys.stderr
+        f"wrote {count} records; resume:"
+        f" cd {sess.cwd(among=list(kept_nodes))} && claude --resume {new_sid}",
+        file=sys.stderr,
     )
+    print(out)
     return 0

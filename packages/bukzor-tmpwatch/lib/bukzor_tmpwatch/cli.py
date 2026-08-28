@@ -1,5 +1,9 @@
 """Garbage-collect scratch directories, without ever deleting unannounced.
 
+Reports by default and changes nothing; --write applies. That inverts the
+tmpwatch tradition on purpose: previewing when you meant to act costs one
+re-run, acting when you meant to preview costs data.
+
 Roots are ~/tmp and every gitignored trash/ below $HOME. An entry idle for
 --quarantine-after days moves to <root>/lost-and-found/<today>/; a batch there
 is deleted --purge-after days after the sweep that made it. Nothing vanishes in
@@ -34,10 +38,10 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         help="sweep these roots instead of the discovered ones",
     )
     parser.add_argument(
-        "-n",
-        "--dry-run",
+        "-w",
+        "--write",
         action="store_true",
-        help="report what would happen, change nothing",
+        help="actually move and delete; without it, only report",
     )
     parser.add_argument(
         "--quarantine-after",
@@ -60,6 +64,7 @@ def main() -> int:
     today = date.today()
     # The live boot's tree is never idle, however quiet it looks.
     keep = {QUARANTINE_DIR, f"boot={boot_stamp()}"}
+    reported = 0
     for root in roots:
         if not root.is_dir():
             continue
@@ -69,7 +74,11 @@ def main() -> int:
             purge_cutoff=today - timedelta(days=args.purge_after),
             today=today,
             keep=keep,
-            dry_run=args.dry_run,
+            dry_run=not args.write,
         ):
             print(line)
+            reported += 1
+    if reported and not args.write:
+        # The default is the opposite of tmpwatch's, so say so once.
+        print(f"nothing changed; --write to apply these {reported}", file=sys.stderr)
     return 0

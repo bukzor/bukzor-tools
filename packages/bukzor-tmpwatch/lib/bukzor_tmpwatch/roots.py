@@ -75,20 +75,39 @@ def git_tracks_content(path: Path) -> bool:
     return proc.returncode != 0 or bool(proc.stdout)
 
 
+def outermost(roots: Sequence[Path]) -> list[Path]:
+    """`roots` with any that lie inside another removed.
+
+    A root nested in another is not independently sweepable: quarantining the
+    outer one renames the inner one into a batch, and the sweep would then look
+    for it at a path that no longer exists. The outer root governs everything
+    beneath it.
+    """
+    return [
+        root
+        for root in roots
+        if not any(other in root.parents for other in roots if other != root)
+    ]
+
+
 def scratch_roots(home: Path, config: Config) -> list[Path]:
     """Every sweepable root: the configured ones, plus scratch found below `home`."""
     if not config.trash_dir:
-        return list(config.roots)
+        return outermost(config.roots)
     else:
-        return list(config.roots) + [
-            found
-            for found in find_dirs_named(home, config.trash_dir, config.prune)
-            if not git_tracks_content(found)
-        ]
+        return outermost(
+            list(config.roots)
+            + [
+                found
+                for found in find_dirs_named(home, config.trash_dir, config.prune)
+                if not git_tracks_content(found)
+            ]
+        )
 
 
 __all__: Sequence[str] = (
     "find_dirs_named",
+    "outermost",
     "git_env",
     "git_tracks_content",
     "is_git_dir",

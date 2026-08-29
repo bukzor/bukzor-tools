@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from .cli import format_changes, header, parse_args
+from .cli import format_changes, header, parse_args, remembering
 from .config_test import DEFAULTS
 from .sweep import Change
 
@@ -98,3 +98,19 @@ class DescribeFormatChanges:
             "/home/bukzor/tmp/",
             "  2020-01-01 (14 entries)",
         ]
+
+
+class DescribeRemembering:
+    def it_records_each_change_it_passes_on(self):
+        seen: list[Change] = []
+        passed = list(remembering([Change("quarantine", TMP, "a")], seen))
+        assert seen == passed
+
+    def it_records_only_what_has_been_consumed(self):
+        """A sweep that fails partway must still know what it did."""
+        seen: list[Change] = []
+        stream = remembering(
+            [Change("quarantine", TMP, "a"), Change("quarantine", TMP, "b")], seen
+        )
+        next(stream)
+        assert seen == [Change("quarantine", TMP, "a")]

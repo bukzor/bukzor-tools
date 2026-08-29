@@ -13,6 +13,7 @@ from .roots import (
     git_env,
     git_tracks_content,
     is_git_dir,
+    outermost,
     scratch_roots,
 )
 
@@ -120,6 +121,21 @@ class DescribeGitTracksContent:
         assert not git_tracks_content(trash)
 
 
+class DescribeOutermost:
+    def it_drops_a_root_that_lies_inside_another(self, tmp_path: Path):
+        """Sweeping the outer one moves the inner one aside mid-run."""
+        outer = tmp_path / "tmp"
+        assert outermost([outer, outer / "project/trash"]) == [outer]
+
+    def it_keeps_siblings(self, tmp_path: Path):
+        roots = [tmp_path / "a", tmp_path / "b"]
+        assert outermost(roots) == roots
+
+    def it_keeps_a_root_that_only_shares_a_prefix(self, tmp_path: Path):
+        roots = [tmp_path / "tmp", tmp_path / "tmp2"]
+        assert outermost(roots) == roots
+
+
 class DescribeScratchRoots:
     def it_starts_with_the_configured_roots(self, tmp_path: Path):
         config = replace(DEFAULTS, roots=(tmp_path / "scratch",))
@@ -143,6 +159,11 @@ class DescribeScratchRoots:
         (repo / "junk/scratch.txt").write_text("x")
         config = replace(DEFAULTS, trash_dir="junk")
         assert scratch_roots(tmp_path, config) == [repo / "junk"]
+
+    def it_drops_a_trash_that_lies_inside_a_configured_root(self, tmp_path: Path):
+        make_scratch_trash(tmp_path / "scratch/repo")
+        config = replace(DEFAULTS, roots=(tmp_path / "scratch",))
+        assert scratch_roots(tmp_path, config) == [tmp_path / "scratch"]
 
     def it_searches_at_all_only_when_a_name_is_configured(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

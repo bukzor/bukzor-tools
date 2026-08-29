@@ -21,6 +21,7 @@ import time
 from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import replace
 from datetime import date
+from itertools import chain
 from pathlib import Path
 
 from .config import Config, MissingSettings, config_dir, load_config
@@ -97,6 +98,18 @@ def format_changes(
         yield f"  {change.name}{change.detail}"
 
 
+def remembering(changes: Iterable[Change], seen: list[Change]) -> Iterator[Change]:
+    """Yield each change as it happens, recording it for the closing summary.
+
+    The report streams, so a sweep that fails partway has still said what it
+    did before it failed. Collecting first would move a thousand files and then
+    print nothing at all.
+    """
+    for change in changes:
+        seen.append(change)
+        yield change
+
+
 def settings(args: argparse.Namespace) -> Config:
     """The configuration this run should use, with any flag applied over it."""
     config = load_config(config_dir())
@@ -133,26 +146,25 @@ def main() -> int:
     dry_run = not args.write
     # Both phases run over every root before the next begins, so the report can
     # state each action once instead of once per root.
-    changes = [
-        *(
+    changes = chain(
+        (
             change
             for root in roots
             for change in proc_quarantine(root, config, now, today, dry_run)
         ),
-        *(
+        (
             change
             for root in roots
             for change in proc_purge(root, config, today, dry_run)
         ),
-    ]
-    for line in format_changes(changes, config, today, dry_run):
+    )
+    seen: list[Change] = []
+    for line in format_changes(remembering(changes, seen), config, today, dry_run):
         print(line)
-    if changes and dry_run:
+    if seen and dry_run:
         # Through a pipe stdout is block-buffered and stderr is not, so without
         # this the hint overtakes the report it is commenting on.
         sys.stdout.flush()
         # The default is the opposite of tmpwatch's, so say so once.
-        print(
-            f"nothing changed; --write to apply these {len(changes)}", file=sys.stderr
-        )
+        print(f"nothing changed; --write to apply these {len(seen)}", file=sys.stderr)
     return 0

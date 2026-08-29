@@ -142,6 +142,12 @@ class DescribeProcQuarantine:
         assert list(proc_quarantine(tmp_path, config, CUTOFF, TODAY, False)) == []
         assert (tmp_path / "stale/deep.txt").exists()
 
+    def it_tolerates_a_root_that_has_gone_away(self, tmp_path: Path):
+        """Anything may remove a root between discovery and the sweep."""
+        assert (
+            list(proc_quarantine(tmp_path / "absent", NOW, CUTOFF, TODAY, False)) == []
+        )
+
     def it_changes_nothing_when_dry(self, tmp_path: Path):
         make_tree(tmp_path, "stale/deep.txt", OLD)
         assert list(proc_quarantine(tmp_path, NOW, CUTOFF, TODAY, True)) == [

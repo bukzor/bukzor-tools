@@ -99,7 +99,13 @@ def entry_count(path: Path) -> int:
 def proc_quarantine(
     root: Path, config: Config, now: float, today: date, dry_run: bool
 ) -> Iterator[Change]:
-    """Move every idle entry in `root` into today's batch."""
+    """Move every idle entry in `root` into today's batch.
+
+    A root that has gone away yields nothing: discovery and the sweep are not
+    one atomic act, and anything may remove a directory in between.
+    """
+    if not root.is_dir():
+        return
     batch = root / config.quarantine_dir / today.isoformat()
     # Quarantining the quarantine would rename a directory into its own
     # subdirectory, so it is exempt whatever the configuration says.

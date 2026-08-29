@@ -145,6 +145,20 @@ class DescribeTheCommand:
         )
         assert merged.stdout.splitlines()[-1].startswith("nothing changed")
 
+    def it_reports_the_work_it_did_before_a_failure(self, tmp_path: Path):
+        """A sweep that dies partway must not swallow what it already moved."""
+        good = tmp_path / "good"
+        stale_file(good, "moved.txt", days=60)
+        walled = tmp_path / "walled"
+        walled.mkdir(mode=0o000)
+        try:
+            done = tmpwatch(tmp_path, "--write", str(good), str(walled))
+        finally:
+            walled.chmod(0o700)
+        assert done.returncode != 0
+        assert "  moved.txt" in done.stdout, done
+        assert "PermissionError" in done.stderr
+
     def it_stays_quiet_when_there_is_nothing_to_do(self, tmp_path: Path):
         scratch = tmp_path / "scratch"
         scratch.mkdir()

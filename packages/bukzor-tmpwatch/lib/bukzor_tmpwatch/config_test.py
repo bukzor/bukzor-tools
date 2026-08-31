@@ -1,4 +1,5 @@
 import time
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -175,6 +176,22 @@ class DescribeConfig:
                 quarantine_after_days=1,
                 purge_after_days=1,
             )
+
+
+class DescribeConfigNames:
+    def it_refuses_a_quarantine_dir_that_is_a_path(self):
+        """A name with a separator cannot be matched against an entry name."""
+        with pytest.raises(AssertionError):
+            replace(DEFAULTS, quarantine_dir="a/b")
+
+    def it_refuses_a_trash_dir_that_is_a_path(self):
+        with pytest.raises(AssertionError):
+            replace(DEFAULTS, trash_dir="a/b")
+
+    def it_refuses_a_relative_root(self):
+        """A relative root resolves against whatever cwd the sweeper has."""
+        with pytest.raises(AssertionError):
+            replace(DEFAULTS, roots=(Path("tmp"),))
 
 
 class DescribeLoadConfig:

@@ -96,6 +96,21 @@ def entry_count(path: Path) -> int:
     return sum(1 for _ in path.rglob("*"))
 
 
+def free_name(batch: Path, name: str) -> str:
+    """`name`, or the first suffixed variant that `batch` does not already hold.
+
+    Two sweeps in one day can meet the same name twice: the entry was
+    quarantined, something recreated it, and a second move to the same
+    destination would overwrite what the first one saved.
+    """
+    candidate = name
+    ordinal = 0
+    while (batch / candidate).exists() or (batch / candidate).is_symlink():
+        ordinal += 1
+        candidate = f"{name}~{ordinal}"
+    return candidate
+
+
 def proc_quarantine(
     root: Path, config: Config, now: float, today: date, dry_run: bool
 ) -> Iterator[Change]:
@@ -112,10 +127,11 @@ def proc_quarantine(
     keep = config.keep | {config.quarantine_dir}
     cutoff = now - config.quarantine_after_days * SECONDS_PER_DAY
     for entry in idle_entries(root, cutoff, keep):
+        name = free_name(batch, entry.name)
         if not dry_run:
             batch.mkdir(parents=True, exist_ok=True)
-            shutil.move(entry, batch / entry.name)
-        yield Change("quarantine", root, entry.name)
+            shutil.move(entry, batch / name)
+        yield Change("quarantine", root, name)
 
 
 def proc_purge(
@@ -136,6 +152,7 @@ __all__: Sequence[str] = (
     "Change",
     "entry_count",
     "expired_batches",
+    "free_name",
     "has_recent_write",
     "idle_entries",
     "parse_datestamp",

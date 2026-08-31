@@ -8,6 +8,7 @@ from .sweep import (
     Change,
     entry_count,
     expired_batches,
+    free_name,
     has_recent_write,
     idle_entries,
     parse_datestamp,
@@ -109,6 +110,21 @@ class DescribeEntryCount:
         assert entry_count(tmp_path) == 2
 
 
+class DescribeFreeName:
+    def it_returns_the_name_when_nothing_holds_it(self, tmp_path: Path):
+        assert free_name(tmp_path, "notes.txt") == "notes.txt"
+
+    def it_steps_past_each_name_already_taken(self, tmp_path: Path):
+        (tmp_path / "notes.txt").write_text("x")
+        (tmp_path / "notes.txt~1").write_text("x")
+        assert free_name(tmp_path, "notes.txt") == "notes.txt~2"
+
+    def it_steps_over_a_dangling_symlink(self, tmp_path: Path):
+        """A broken link occupies the name even though it does not exist."""
+        (tmp_path / "notes.txt").symlink_to(tmp_path / "absent")
+        assert free_name(tmp_path, "notes.txt") == "notes.txt~1"
+
+
 class DescribeProcQuarantine:
     def it_moves_an_idle_entry_into_a_dated_batch(self, tmp_path: Path):
         make_tree(tmp_path, "stale/deep.txt", OLD)
@@ -141,6 +157,26 @@ class DescribeProcQuarantine:
         config = replace(NOW, quarantine_after_days=10)
         assert list(proc_quarantine(tmp_path, config, CUTOFF, TODAY, False)) == []
         assert (tmp_path / "stale/deep.txt").exists()
+
+    def it_keeps_both_when_a_name_is_quarantined_twice_in_a_day(self, tmp_path: Path):
+        """Two sweeps in one day can meet the same name twice."""
+        make_tree(tmp_path, "notes.txt", OLD)
+        list(proc_quarantine(tmp_path, NOW, CUTOFF, TODAY, False))
+        make_tree(tmp_path, "notes.txt", OLD)
+        list(proc_quarantine(tmp_path, NOW, CUTOFF, TODAY, False))
+        batch = tmp_path / QUARANTINE / "2026-06-01"
+        assert sorted(path.name for path in batch.iterdir()) == [
+            "notes.txt",
+            "notes.txt~1",
+        ]
+
+    def it_names_the_collision_it_reports(self, tmp_path: Path):
+        make_tree(tmp_path, "notes.txt", OLD)
+        list(proc_quarantine(tmp_path, NOW, CUTOFF, TODAY, False))
+        make_tree(tmp_path, "notes.txt", OLD)
+        assert list(proc_quarantine(tmp_path, NOW, CUTOFF, TODAY, False)) == [
+            Change("quarantine", tmp_path, "notes.txt~1")
+        ]
 
     def it_tolerates_a_root_that_has_gone_away(self, tmp_path: Path):
         """Anything may remove a root between discovery and the sweep."""

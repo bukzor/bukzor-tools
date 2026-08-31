@@ -26,6 +26,16 @@ class DescribeParseArgs:
         with pytest.raises(SystemExit):
             parse_args(["-n"])
 
+    def it_refuses_a_negative_wait(self):
+        """A negative purge-after puts the cutoff in the future: it deletes today."""
+        with pytest.raises(SystemExit):
+            parse_args(["--purge-after", "-1"])
+        with pytest.raises(SystemExit):
+            parse_args(["--quarantine-after", "-1"])
+
+    def it_takes_a_wait_of_zero(self):
+        assert parse_args(["--purge-after", "0"]).purge_after == 0
+
     def it_takes_roots_positionally(self):
         assert parse_args(["/x", "/y"]).root == [Path("/x"), Path("/y")]
 

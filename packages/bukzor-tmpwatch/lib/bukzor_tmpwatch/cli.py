@@ -5,9 +5,11 @@ tmpwatch tradition on purpose: previewing when you meant to act costs one
 re-run, acting when you meant to preview costs data.
 
 An idle entry moves to a dated batch inside its root's quarantine directory,
-and that batch is deleted a further wait later. Nothing vanishes in under a
-month, and it spends the second half of that month somewhere you can see it
-and move it back.
+and that batch is deleted purge-after-days later. That second wait is the floor
+on how long anything survives, and it is a month: a file moved into a scratch
+directory keeps its old mtime, so it can be quarantined by the very next sweep
+with no wait at all, and everything it gets, it gets after quarantine -- in a
+directory you can see and move it back out of.
 
 Which directories are swept, how long each wait is, and what is exempt are all
 settings, one plain-text file each under $XDG_CONFIG_HOME/bukzor-tmpwatch/.
@@ -50,19 +52,30 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     )
     parser.add_argument(
         "--quarantine-after",
-        type=int,
+        type=whole_days,
         default=None,
         metavar="DAYS",
         help="override the quarantine-after-days setting",
     )
     parser.add_argument(
         "--purge-after",
-        type=int,
+        type=whole_days,
         default=None,
         metavar="DAYS",
         help="override the purge-after-days setting",
     )
     return parser.parse_args(argv)
+
+
+def whole_days(value: str) -> int:
+    """A count of days from the command line: zero or more, as a file must be.
+
+    A negative wait puts the cutoff in the future, which purges the batch the
+    same sweep just made.
+    """
+    if not value.isdigit():
+        raise argparse.ArgumentTypeError(f"not a whole number of days: {value!r}")
+    return int(value)
 
 
 def header(verb: str, config: Config, today: date, dry_run: bool) -> str:

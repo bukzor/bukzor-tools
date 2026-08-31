@@ -36,7 +36,7 @@ DEFAULT_KEEP = (f"boot={BOOT}",)
 DEFAULT_TRASH_DIR = "trash"
 DEFAULT_QUARANTINE_DIR = "lost-and-found"
 DEFAULT_QUARANTINE_AFTER_DAYS = 15
-DEFAULT_PURGE_AFTER_DAYS = 15
+DEFAULT_PURGE_AFTER_DAYS = 30
 
 
 class MissingSettings(Exception):
@@ -59,6 +59,14 @@ class Config:
         # An empty name would put the quarantine at the root itself, and the
         # first sweep would try to rename the root into its own subdirectory.
         assert self.quarantine_dir, self
+        # Both are matched against a single directory name, so anything with a
+        # separator in it -- or `..` -- can never match, and would silently
+        # exempt nothing while looking like it exempts something.
+        assert Path(self.quarantine_dir).name == self.quarantine_dir, self
+        assert not self.trash_dir or Path(self.trash_dir).name == self.trash_dir, self
+        # A relative root resolves against whatever working directory the
+        # sweeper happens to have, which for a systemd unit is not yours.
+        assert all(root.is_absolute() for root in self.roots), self
 
 
 def setting_names() -> tuple[str, ...]:

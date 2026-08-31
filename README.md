@@ -38,6 +38,11 @@ looks for its hooks outside any venv, so `git-localhost-store-install`
 writes them there and aims the public path at the venv you just
 installed into.
 
+## Current Work
+
+Check `.claude/todo.md` for active efforts. Load `Skill("llm-subtask")` for
+maintenance.
+
 ## Develop
 
 ```bash

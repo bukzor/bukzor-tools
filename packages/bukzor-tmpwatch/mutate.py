@@ -476,11 +476,25 @@ MUTATIONS = [
         f"{T}/acceptance_test.py::WhenWriting::it_leaves_an_entry_whose_contents_are_fresh",
     ),
     (
-        "symlinks swept",
+        "rendezvous ignored",
         LIB / "sweep.py",
-        "and not entry.is_symlink()",
+        "and not is_rendezvous(entry)",
         "",
         f"{T}/acceptance_test.py::WhenWriting::it_never_sweeps_a_symlink",
+    ),
+    (
+        "sockets swept",
+        LIB / "sweep.py",
+        "return stat.S_ISLNK(mode) or stat.S_ISSOCK(mode) or stat.S_ISFIFO(mode)",
+        "return stat.S_ISLNK(mode)",
+        f"{T}/sweep_test.py::DescribeIdleEntries::it_never_sweeps_a_socket",
+    ),
+    (
+        "fifos swept",
+        LIB / "sweep.py",
+        "return stat.S_ISLNK(mode) or stat.S_ISSOCK(mode) or stat.S_ISFIFO(mode)",
+        "return stat.S_ISLNK(mode) or stat.S_ISSOCK(mode)",
+        f"{T}/sweep_test.py::DescribeIdleEntries::it_never_sweeps_a_fifo",
     ),
 ]
 

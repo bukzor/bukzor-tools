@@ -1,4 +1,5 @@
 import os
+import socket
 from dataclasses import replace
 from datetime import date
 from pathlib import Path
@@ -11,6 +12,7 @@ from .sweep import (
     free_name,
     has_recent_write,
     idle_entries,
+    is_rendezvous,
     parse_datestamp,
     proc_purge,
     proc_quarantine,
@@ -71,6 +73,29 @@ class DescribeHasRecentWrite:
         assert not has_recent_write(home, CUTOFF)
 
 
+class DescribeIsRendezvous:
+    def it_says_no_to_a_plain_file(self, tmp_path: Path):
+        (tmp_path / "notes.txt").write_text("x")
+        assert not is_rendezvous(tmp_path / "notes.txt")
+
+    def it_says_no_to_a_directory(self, tmp_path: Path):
+        assert not is_rendezvous(tmp_path)
+
+    def it_says_yes_to_a_symlink(self, tmp_path: Path):
+        (tmp_path / "link").symlink_to(tmp_path / "absent")
+        assert is_rendezvous(tmp_path / "link")
+
+    def it_says_yes_to_a_socket(self, tmp_path: Path):
+        """A socket's mtime is set once at bind and never moves again."""
+        with socket.socket(socket.AF_UNIX) as sock:
+            sock.bind(str(tmp_path / "app.sock"))
+            assert is_rendezvous(tmp_path / "app.sock")
+
+    def it_says_yes_to_a_fifo(self, tmp_path: Path):
+        os.mkfifo(tmp_path / "pipe")
+        assert is_rendezvous(tmp_path / "pipe")
+
+
 class DescribeIdleEntries:
     def it_returns_only_entries_with_no_recent_write(self, tmp_path: Path):
         make_tree(tmp_path, "stale/deep.txt", OLD)
@@ -80,6 +105,18 @@ class DescribeIdleEntries:
     def it_never_sweeps_a_symlink(self, tmp_path: Path):
         (tmp_path / "link").symlink_to(tmp_path / "absent")
         age(tmp_path / "link", OLD)
+        assert idle_entries(tmp_path, CUTOFF, keep=()) == []
+
+    def it_never_sweeps_a_socket(self, tmp_path: Path):
+        """Live and idle look identical: bind sets mtime once, traffic never does."""
+        with socket.socket(socket.AF_UNIX) as sock:
+            sock.bind(str(tmp_path / "app.sock"))
+            age(tmp_path / "app.sock", OLD)
+            assert idle_entries(tmp_path, CUTOFF, keep=()) == []
+
+    def it_never_sweeps_a_fifo(self, tmp_path: Path):
+        os.mkfifo(tmp_path / "pipe")
+        age(tmp_path / "pipe", OLD)
         assert idle_entries(tmp_path, CUTOFF, keep=()) == []
 
     def it_honors_kept_names(self, tmp_path: Path):

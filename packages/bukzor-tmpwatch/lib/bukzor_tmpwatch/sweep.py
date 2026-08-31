@@ -8,6 +8,7 @@ phases are separate passes so that a report can group by phase across roots.
 
 import os
 import shutil
+import stat
 from collections.abc import Container, Iterator, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -57,17 +58,32 @@ def has_recent_write(path: Path, cutoff: float) -> bool:
     return False
 
 
+def is_rendezvous(path: Path) -> bool:
+    """Whether `path` is a name processes meet at rather than data.
+
+    Symlinks, sockets and FIFOs are all pointers: moving one breaks whatever
+    depends on the name while relocating no data at all. The socket is the
+    sharpest case -- its mtime is set once at bind and never moves again, so a
+    socket carrying traffic every second is indistinguishable from an abandoned
+    one. /tmp/.X11-unix/X0 reads as untouched since the machine booted.
+    """
+    mode = path.lstat().st_mode
+    return stat.S_ISLNK(mode) or stat.S_ISSOCK(mode) or stat.S_ISFIFO(mode)
+
+
 def idle_entries(root: Path, cutoff: float, keep: Container[str]) -> list[Path]:
     """Top-level entries under `root` with no write since `cutoff`.
 
-    A symlink is a pointer, not content: sweeping one loses wiring and moves no
-    data, so symlinks are never idle. Names in `keep` are never swept.
+    A rendezvous point is never idle, however old it looks. Names in `keep` are
+    never swept. One known limit: this covers an entry that is itself a socket,
+    not a directory that happens to contain one -- for that, mtime is all there
+    is, and the keep list is the answer.
     """
     return [
         entry
         for entry in sorted(root.iterdir())
         if entry.name not in keep
-        and not entry.is_symlink()
+        and not is_rendezvous(entry)
         and not has_recent_write(entry, cutoff)
     ]
 
@@ -155,6 +171,7 @@ __all__: Sequence[str] = (
     "free_name",
     "has_recent_write",
     "idle_entries",
+    "is_rendezvous",
     "parse_datestamp",
     "proc_purge",
     "proc_quarantine",

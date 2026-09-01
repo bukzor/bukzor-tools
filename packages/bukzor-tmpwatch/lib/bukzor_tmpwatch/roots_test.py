@@ -6,7 +6,6 @@ from subprocess import run
 import pytest
 
 from . import roots as roots_module
-from .config import DEFAULT_PRUNE
 from .config_test import DEFAULTS
 from .roots import (
     find_dirs_named,
@@ -59,29 +58,29 @@ class DescribeIsGitDir:
 class DescribeFindDirsNamed:
     def it_finds_a_nested_match(self, tmp_path: Path):
         (tmp_path / "a/b/trash").mkdir(parents=True)
-        assert list(find_dirs_named(tmp_path, "trash", DEFAULT_PRUNE)) == [
+        assert list(find_dirs_named(tmp_path, "trash", DEFAULTS.prune)) == [
             tmp_path / "a/b/trash"
         ]
 
     def it_does_not_descend_into_a_match(self, tmp_path: Path):
         (tmp_path / "trash/trash").mkdir(parents=True)
-        assert list(find_dirs_named(tmp_path, "trash", DEFAULT_PRUNE)) == [
+        assert list(find_dirs_named(tmp_path, "trash", DEFAULTS.prune)) == [
             tmp_path / "trash"
         ]
 
     def it_skips_a_repository_interior(self, tmp_path: Path):
         run(["git", "init", "-q", "--bare", str(tmp_path / "store")], check=True)
         (tmp_path / "store/refs/heads/trash").mkdir(parents=True)
-        assert list(find_dirs_named(tmp_path, "trash", DEFAULT_PRUNE)) == []
+        assert list(find_dirs_named(tmp_path, "trash", DEFAULTS.prune)) == []
 
     def it_skips_pruned_names(self, tmp_path: Path):
         (tmp_path / "node_modules/pkg/trash").mkdir(parents=True)
-        assert list(find_dirs_named(tmp_path, "trash", DEFAULT_PRUNE)) == []
+        assert list(find_dirs_named(tmp_path, "trash", DEFAULTS.prune)) == []
 
     def it_looks_for_the_name_it_is_given(self, tmp_path: Path):
         (tmp_path / "junk").mkdir()
         (tmp_path / "trash").mkdir()
-        assert list(find_dirs_named(tmp_path, "junk", DEFAULT_PRUNE)) == [
+        assert list(find_dirs_named(tmp_path, "junk", DEFAULTS.prune)) == [
             tmp_path / "junk"
         ]
 

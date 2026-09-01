@@ -103,13 +103,3 @@ def scratch_roots(home: Path, config: Config) -> list[Path]:
                 if not git_tracks_content(found)
             ]
         )
-
-
-__all__: Sequence[str] = (
-    "find_dirs_named",
-    "outermost",
-    "git_env",
-    "git_tracks_content",
-    "is_git_dir",
-    "scratch_roots",
-)

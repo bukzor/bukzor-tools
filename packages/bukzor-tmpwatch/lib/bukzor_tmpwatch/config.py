@@ -22,22 +22,6 @@ BOOT = "{boot}"
 PROC_STAT = Path("/proc/stat")
 TEMPLATES = Path(__file__).parent / "config.d"
 
-DEFAULT_ROOTS = ("~/tmp",)
-DEFAULT_PRUNE = (
-    ".git",
-    ".cache",
-    ".npm",
-    ".rustup",
-    ".venv",
-    "node_modules",
-    "target",
-)
-DEFAULT_KEEP = (f"boot={BOOT}",)
-DEFAULT_TRASH_DIR = "trash"
-DEFAULT_QUARANTINE_DIR = "lost-and-found"
-DEFAULT_QUARANTINE_AFTER_DAYS = 15
-DEFAULT_PURGE_AFTER_DAYS = 30
-
 
 class MissingSettings(Exception):
     """Setting files that must exist do not. Carries the list of paths."""
@@ -158,23 +142,3 @@ def load_config(directory: Path) -> Config:
         quarantine_after_days=read_days(directory, "quarantine_after_days"),
         purge_after_days=read_days(directory, "purge_after_days"),
     )
-
-
-__all__: Sequence[str] = (
-    "APP",
-    "BOOT",
-    "TEMPLATES",
-    "Config",
-    "MissingSettings",
-    "boot_stamp",
-    "config_dir",
-    "expand_keep",
-    "load_config",
-    "missing_settings",
-    "parse_lines",
-    "read_days",
-    "read_value",
-    "read_values",
-    "setting_names",
-    "xdg_config_home",
-)

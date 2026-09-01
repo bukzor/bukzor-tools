@@ -7,13 +7,7 @@ import pytest
 from . import config as config_module
 from .config import (
     APP,
-    DEFAULT_KEEP,
-    DEFAULT_PRUNE,
-    DEFAULT_PURGE_AFTER_DAYS,
-    DEFAULT_QUARANTINE_AFTER_DAYS,
-    DEFAULT_QUARANTINE_DIR,
-    DEFAULT_ROOTS,
-    DEFAULT_TRASH_DIR,
+    BOOT,
     TEMPLATES,
     Config,
     MissingSettings,
@@ -31,16 +25,27 @@ from .config import (
 )
 from .install import proc_write_settings
 
+# The values config.d/ ships. The code holds no defaults of its own -- a
+# setting with no file is an error, never a guess -- so these live here, where
+# DescribeTheTemplates pins them to the files and every other test reads them.
+ROOTS = ("~/tmp",)
+PRUNE = (".git", ".cache", ".npm", ".rustup", ".venv", "node_modules", "target")
+KEEP = (f"boot={BOOT}",)
+TRASH_DIR = "trash"
+QUARANTINE_DIR = "lost-and-found"
+QUARANTINE_AFTER_DAYS = 15
+PURGE_AFTER_DAYS = 30
+
 # A Config for tests elsewhere: the real defaults, but with nothing exempt and
 # no roots of its own, so a test states only what it is about.
 DEFAULTS = Config(
     roots=(),
-    prune=frozenset(DEFAULT_PRUNE),
+    prune=frozenset(PRUNE),
     keep=frozenset(),
-    trash_dir=DEFAULT_TRASH_DIR,
-    quarantine_dir=DEFAULT_QUARANTINE_DIR,
-    quarantine_after_days=DEFAULT_QUARANTINE_AFTER_DAYS,
-    purge_after_days=DEFAULT_PURGE_AFTER_DAYS,
+    trash_dir=TRASH_DIR,
+    quarantine_dir=QUARANTINE_DIR,
+    quarantine_after_days=QUARANTINE_AFTER_DAYS,
+    purge_after_days=PURGE_AFTER_DAYS,
 )
 
 
@@ -208,11 +213,11 @@ class DescribeLoadConfig:
     def it_reads_what_the_installer_wrote(self, tmp_path: Path):
         loaded = load_config(seed(tmp_path))
         assert loaded.roots == (Path("~/tmp").expanduser(),)
-        assert loaded.prune == frozenset(DEFAULT_PRUNE)
-        assert loaded.trash_dir == DEFAULT_TRASH_DIR
-        assert loaded.quarantine_dir == DEFAULT_QUARANTINE_DIR
-        assert loaded.quarantine_after_days == DEFAULT_QUARANTINE_AFTER_DAYS
-        assert loaded.purge_after_days == DEFAULT_PURGE_AFTER_DAYS
+        assert loaded.prune == frozenset(PRUNE)
+        assert loaded.trash_dir == TRASH_DIR
+        assert loaded.quarantine_dir == QUARANTINE_DIR
+        assert loaded.quarantine_after_days == QUARANTINE_AFTER_DAYS
+        assert loaded.purge_after_days == PURGE_AFTER_DAYS
 
     def it_expands_a_tilde_in_a_root(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -250,14 +255,16 @@ class DescribeTheTemplates:
             setting_names()
         )
 
-    def it_holds_the_default_the_code_declares(self):
+    def it_holds_the_defaults_every_test_here_assumes(self):
+        """A template edited without a decision behind it fails a test."""
+
         def values(name: str) -> list[str]:
             return parse_lines((TEMPLATES / name).read_text())
 
-        assert values("roots") == list(DEFAULT_ROOTS)
-        assert values("prune") == list(DEFAULT_PRUNE)
-        assert values("keep") == list(DEFAULT_KEEP)
-        assert values("trash-dir") == [DEFAULT_TRASH_DIR]
-        assert values("quarantine-dir") == [DEFAULT_QUARANTINE_DIR]
-        assert values("quarantine-after-days") == [str(DEFAULT_QUARANTINE_AFTER_DAYS)]
-        assert values("purge-after-days") == [str(DEFAULT_PURGE_AFTER_DAYS)]
+        assert values("roots") == list(ROOTS)
+        assert values("prune") == list(PRUNE)
+        assert values("keep") == list(KEEP)
+        assert values("trash-dir") == [TRASH_DIR]
+        assert values("quarantine-dir") == [QUARANTINE_DIR]
+        assert values("quarantine-after-days") == [str(QUARANTINE_AFTER_DAYS)]
+        assert values("purge-after-days") == [str(PURGE_AFTER_DAYS)]

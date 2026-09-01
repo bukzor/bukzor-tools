@@ -190,18 +190,11 @@ MUTATIONS = [
         f"{T}/config_test.py::DescribeTheTemplates::it_ships_one_per_setting",
     ),
     (
-        "template drifts from code",
+        "template drifts from the tests",
         LIB / "config.d/roots",
         "~/tmp",
         "~/scratch",
-        f"{T}/config_test.py::DescribeTheTemplates::it_holds_the_default_the_code_declares",
-    ),
-    (
-        "code drifts from template",
-        LIB / "config.py",
-        "DEFAULT_PURGE_AFTER_DAYS = 30",
-        "DEFAULT_PURGE_AFTER_DAYS = 29",
-        f"{T}/config_test.py::DescribeTheTemplates::it_holds_the_default_the_code_declares",
+        f"{T}/config_test.py::DescribeTheTemplates::it_holds_the_defaults_every_test_here_assumes",
     ),
     (
         "shipped settings do not load",
@@ -506,6 +499,19 @@ def main() -> int:
         if old not in path.read_text()
     ]
     assert not stale, stale
+
+    # pytest exits 4 on a test id that names nothing, which reads here as a
+    # non-zero return and so as a mutation caught. Every id must resolve, or
+    # a typo would quietly report proof that was never obtained.
+    collected = subprocess.run(
+        [sys.executable, "-m", "pytest", str(LIB), "-q", "--collect-only"],
+        capture_output=True,
+        text=True,
+        cwd=REPO,
+        check=True,
+    ).stdout
+    unknown = sorted({test for *_, test in MUTATIONS if test not in collected})
+    assert not unknown, unknown
 
     gaps = 0
     for label, path, old, new, test in MUTATIONS:

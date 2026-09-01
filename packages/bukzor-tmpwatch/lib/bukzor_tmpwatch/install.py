@@ -14,7 +14,6 @@ Usage: bukzor-tmpwatch-install
 """
 
 import shutil
-from collections.abc import Sequence
 from pathlib import Path
 from subprocess import run
 
@@ -69,12 +68,3 @@ def main() -> int:
         print(path)
     print("enable with: systemctl --user enable --now bukzor-tmpwatch.timer")
     return 0
-
-
-__all__: Sequence[str] = (
-    "HERE",
-    "UNITS",
-    "proc_install",
-    "proc_write_settings",
-    "unit_dir",
-)

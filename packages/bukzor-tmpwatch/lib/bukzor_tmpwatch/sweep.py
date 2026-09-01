@@ -9,7 +9,7 @@ phases are separate passes so that a report can group by phase across roots.
 import os
 import shutil
 import stat
-from collections.abc import Container, Iterator, Sequence
+from collections.abc import Container, Iterator
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
@@ -161,18 +161,3 @@ def proc_purge(
         if not dry_run:
             shutil.rmtree(stale)
         yield Change("purge", root, stale.name, f" ({count} entries)")
-
-
-__all__: Sequence[str] = (
-    "SECONDS_PER_DAY",
-    "Change",
-    "entry_count",
-    "expired_batches",
-    "free_name",
-    "has_recent_write",
-    "idle_entries",
-    "is_rendezvous",
-    "parse_datestamp",
-    "proc_purge",
-    "proc_quarantine",
-)

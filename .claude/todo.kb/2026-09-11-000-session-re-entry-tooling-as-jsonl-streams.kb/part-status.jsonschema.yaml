@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://json-schema.org/draft/2020-12/schema
+$schema: https://json-schema.org/draft/2020-12/schema
+title: Build status of one part (a stage or a command)
+type: object
+properties:
+  status:
+    description: |
+      exists -- usable today as described, nothing to build.
+      partial -- pieces exist (named in the body) but not in this shape.
+      missing -- nothing usable exists.
+      built -- landed after this design; body names the commit.
+    enum: [exists, partial, missing, built]
+  effort-sweh:
+    description: |
+      Point estimate to reach `built` from the state on 2026-09-11, in
+      SWE-hours. Zero when status is exists.
+    type: number
+    minimum: 0
+  replaces:
+    description: |
+      Paths (~ allowed) of existing code this part supersedes. Each should
+      also have a file in retirements.kb/.
+    type: array
+    items:
+      type: string
+required: [status, effort-sweh]
+additionalProperties: false

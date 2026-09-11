@@ -42,3 +42,9 @@ a subtraction the owner may or may not want; none is a defect.
 - [ ] Is `entry_count` worth its cost? It walks a whole batch with `rglob`
       just to print `(N entries)`, against a quarantine last measured at
       3.8G. A feature question, not a simplification.
+
+## claude-code-archeology
+
+- [ ] [todo.kb/2026-09-11-000-session-re-entry-tooling-as-jsonl-streams.md](todo.kb/2026-09-11-000-session-re-entry-tooling-as-jsonl-streams.md)
+      -- five jsonl emitters plus jq views replace four transcript decoders
+      and two task listers; parts enumerated in the sibling `.kb/`

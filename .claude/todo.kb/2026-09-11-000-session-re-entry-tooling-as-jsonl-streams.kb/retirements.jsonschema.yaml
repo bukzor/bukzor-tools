@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://json-schema.org/draft/2020-12/schema
+$schema: https://json-schema.org/draft/2020-12/schema
+title: One existing artifact the design supersedes
+type: object
+properties:
+  path:
+    description: Path of the artifact (~ allowed).
+    type: string
+  replaced-by:
+    description: |
+      Relative paths to the stage or command files that take over the
+      artifact's job.
+    type: array
+    items:
+      type: string
+    minItems: 1
+required: [path, replaced-by]
+additionalProperties: false

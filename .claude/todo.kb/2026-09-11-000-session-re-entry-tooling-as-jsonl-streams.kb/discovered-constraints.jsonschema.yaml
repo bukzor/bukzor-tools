@@ -1,0 +1,14 @@
+$schema: "skill://llm-kb/jsonschema/dialect.jsonschema.yaml"
+title: One measured fact the design must work within
+type: object
+properties:
+  measured:
+    description: The day the fact was measured or observed.
+    type: date
+  session:
+    description: |
+      Session id prefix of the transcript holding the measurement, under
+      ~/.claude/projects, so the command and its output can be re-read.
+    type: string
+required: [measured, session]
+additionalProperties: false

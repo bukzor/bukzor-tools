@@ -237,13 +237,17 @@ class Session:
 def is_user_text(node: Node) -> bool:
     """A genuine user message (not a tool_result wrapped as type=user).
 
-    String content and a text-block list both count; anything starting with
-    a tool_result block does not.
+    String content and a block list both count, including one opening with
+    a pasted image; anything starting with a tool_result block does not.
 
     >>> is_user_text(Node(0, {"type": "user", "message": {"content": "hi"}}))
     True
     >>> is_user_text(Node(0, {"type": "user", "message": {"content": [
     ...     {"type": "text", "text": "hi"},
+    ... ]}}))
+    True
+    >>> is_user_text(Node(0, {"type": "user", "message": {"content": [
+    ...     {"type": "image"}, {"type": "text", "text": "this one"},
     ... ]}}))
     True
     >>> is_user_text(Node(0, {"type": "user", "message": {"content": [
@@ -262,7 +266,7 @@ def is_user_text(node: Node) -> bool:
     if isinstance(content, str):
         return True
     first = content[0] if content else None
-    return isinstance(first, Mapping) and first.get("type") == "text"
+    return isinstance(first, Mapping) and first.get("type") != "tool_result"
 
 
 def parse_jsonl(text_lines: Iterator[tuple[int, str]]) -> Iterator[Node]:

@@ -76,8 +76,16 @@ Requirements:
   and a process never opens a file it was not handed.
 - Every stream line carries a `kind` field, so heterogeneous streams can be
   concatenated and joined in one `jq` pass.
-- Time is an epoch integer on every line, so local rendering is `jq`'s
-  problem and the UTC-versus-local drift stops recurring.
+- Time is an integer of nanoseconds since the Unix epoch, in a key ending
+  `time_ns` (underscore, because `jq` reads `.time-ns` as subtraction).
+  Streams carry only the integer; a humanizer annotates it in place as
+  `{"@value": 1790186975411343607, "s": "2026-09-23T13:09:35,411343607-05:00"}`.
+  [!@bukzor] 2026-09-23. `jq` parses no offset-bearing date string
+  correctly ([jq-drops-offsets]) but compares these integers exactly
+  ([jq-big-integers]).
+- The humanizer runs last, for reading only: `jq` ranks every object above
+  every number, so a time filter over annotated lines passes all of them.
+  [!DRAFT] 2026-09-23.
 - Records are cited by `uuid` prefix, not by line number, because line
   numbers do not survive truncation, extraction, or compaction.
 
@@ -92,7 +100,7 @@ constrain it, are in the parts kb under `discovered-constraints.kb/`.
 Outcomes, not procedure. Each links to the part that specifies it.
 
 - [ ] A records stream exists: one decoded line per transcript record,
-      flat, with `kind`, `session`, `uuid`, epoch `t`, collapsed `type`,
+      flat, with `kind`, `session`, `uuid`, `time_ns`, collapsed `type`,
       and `text` ([records], [record-decoding])
 - [ ] A sessions stream is a `jq` reduce over records, and
       `claude-inventory` renders it with first prompt, last exchange, turn
@@ -140,6 +148,8 @@ parallel implementation.
 [records]: ./2026-09-11-000-session-re-entry-tooling-as-jsonl-streams.kb/streams.kb/records.md
 [sessions]: ./2026-09-11-000-session-re-entry-tooling-as-jsonl-streams.kb/streams.kb/sessions.md
 [record-decoding]: ./2026-09-11-000-session-re-entry-tooling-as-jsonl-streams.kb/stages.kb/record-decoding.md
+[jq-drops-offsets]: ./2026-09-11-000-session-re-entry-tooling-as-jsonl-streams.kb/discovered-constraints.kb/jq-date-parsing-drops-utc-offsets.md
+[jq-big-integers]: ./2026-09-11-000-session-re-entry-tooling-as-jsonl-streams.kb/discovered-constraints.kb/jq-compares-big-integers-exactly.md
 [selection]: ./2026-09-11-000-session-re-entry-tooling-as-jsonl-streams.kb/stages.kb/selection.md
 [checkbox-extraction]: ./2026-09-11-000-session-re-entry-tooling-as-jsonl-streams.kb/stages.kb/checkbox-extraction.md
 [git-fleet-emission]: ./2026-09-11-000-session-re-entry-tooling-as-jsonl-streams.kb/stages.kb/git-fleet-emission.md

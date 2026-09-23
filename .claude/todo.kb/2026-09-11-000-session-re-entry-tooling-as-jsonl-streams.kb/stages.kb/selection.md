@@ -20,8 +20,8 @@ both, the sweep of markdown under `~/repo` dropped from thirty-six
 thousand files to fifty-four hundred with zero from `trash/`.
 
 Transcript selection is the same command over `~/.claude/projects` with
-`-g '*.jsonl'`; a time cut is a `jq` filter on `t_last` downstream, not a
-`find -mtime` here, for the reason in [mtime-moves-on-exit].
+`-g '*.jsonl'`; a time cut is a `jq` filter on `last_time_ns` downstream,
+not a `find -mtime` here, for the reason in [mtime-moves-on-exit].
 
 What exists: `bukzor-homedir-archeology find` owns the prune logic today
 and takes `find` primaries. The change is to express that list as an

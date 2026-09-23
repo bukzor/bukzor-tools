@@ -26,8 +26,8 @@ What exists: `claude_code_archeology.session` parses and classifies
 (`is_user_text`, `role_of`), and is the survivor. Text extraction is
 duplicated in `format_short.label`, holistics `render.py`, `search.py`,
 and `usage-mix.py`; the decoder absorbs all four. The type collapse and
-the `injected` classification are new. Time normalisation to epoch is new
-and is where [timestamps-are-utc] stops recurring.
+the `injected` classification are new. Converting the UTC timestamp to
+`time_ns` is new and is where [timestamps-are-utc] stops recurring.
 
 Whether the decoded stream is cached beside each transcript is
 [cache-the-records-stream]. Home is

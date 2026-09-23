@@ -13,10 +13,10 @@ view. Gains `--since` as a timestamp, first prompt, last exchange, turn
 count, local-time span, and family grouping; loses nothing the current
 rows show.
 
-The one behavioural change that matters: recency comes from `t_last`, so
-sessions closed with `i/exit` no longer float to the top. On 2026-09-10 the
-current tool listed thirty sessions of which twelve were real
-([mtime-moves-on-exit]).
+The one behavioural change that matters: recency comes from
+`last_time_ns`, so sessions closed with `i/exit` no longer float to the
+top. On 2026-09-10 the current tool listed thirty sessions of which twelve
+were real ([mtime-moves-on-exit]).
 
 `--sh` keeps emitting resume commands; that view reads `cwd` and `session`
 from the same stream.

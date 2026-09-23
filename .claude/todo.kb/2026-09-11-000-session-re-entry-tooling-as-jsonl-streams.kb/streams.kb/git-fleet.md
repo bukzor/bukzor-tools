@@ -7,7 +7,7 @@ Two line shapes from one emitter, [git-fleet-emission], distinguished by
 kind      "commit"
 repo      string        path of the repo root (~ allowed)
 sha       string
-t         integer       author epoch
+time_ns   integer       author time, nanoseconds since the Unix epoch
 subject   string
 files     [string]      paths touched, repo-relative
 

@@ -8,8 +8,7 @@ kind      "record"                       constant
 session   string                         the transcript's sessionId
 uuid      string                         present on every talk record
 parent    string|null                    parentUuid
-t         integer                        epoch seconds
-ts        string                         the raw ISO timestamp (UTC)
+time_ns   integer                        nanoseconds since the Unix epoch
 type      enum                           see below
 text      string                         decoded text, blocks joined, "" when none
 cwd       string
@@ -31,9 +30,9 @@ records. Raw kinds that carry no session content (`mode`,
 `permission-mode`, `atis-latch`, `file-history-*`, `cost-state`,
 `queue-operation`) are dropped.
 
-Invariants a consumer may rely on: every line has `session`, `t`, and
-`type`; `text` is never JSON-escaped twice; the empty string, not null,
-means no text. `file` and `line` appear only when the stream was produced
+Invariants a consumer may rely on: every line has `session`, `time_ns`,
+and `type`; `text` is never JSON-escaped twice; the empty string, not
+null, means no text. `file` and `line` appear only when the stream was produced
 through the tagger and are addresses into the raw file, not identity.
 Identity is `uuid`; see [cite-by-uuid].
 

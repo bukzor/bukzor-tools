@@ -1,5 +1,5 @@
 ---
-status: partial
+status: built
 effort-sweh: 3
 replaces:
   - ~/repo/github.com/bukzor/bukzor-tools/packages/claude-code-archeology/lib/claude_code_archeology/format_short.py
@@ -12,31 +12,34 @@ replaces:
 Map: raw transcript records in, [records] lines out. The one place the
 transcript format is understood; every consumer reads the stream instead.
 
-Two invocation forms, same decoder. As a filter it reads concatenated raw
-JSONL on stdin, which is lossless because every talk record already
+Built in 80f5051 as `claude_code_archeology.records` and the
+`claude-jsonl-records` console script. It reads stdin only and ignores its
+arguments, which gives two invocation forms from one decoder. As a filter it
+reads concatenated raw JSONL, which is lossless because every talk record
 carries its session id ([session-id-on-records]). Under `rg --pre` it runs
-per file with `rg`'s parallelism and origin tagging, at the cost that the
-tagged line numbers count the decoder's output, not the source
-([pre-line-numbers]); inside the preprocessor the file must be read via
-stdin redirection, not as an argument ([dash-slugs]). The live
-`claude --print --output-format stream-json` feed is the same shape and
-should go through the same decoder.
+per file with `rg`'s parallelism and origin tagging; `rg` connects the file
+to the preprocessor's stdin and passes the path as an argument, which is
+ignored because every path under `~/.claude/projects` begins with a dash
+([dash-slugs]). The tagged line numbers count the decoder's output, not the
+source ([pre-line-numbers]). Both forms emit identical records; a day of
+transcripts decodes in about two seconds either way, the whole corpus in
+twenty-two.
 
-What exists: `claude_code_archeology.session` parses and classifies
-(`is_user_text`, `role_of`), and is the survivor. Text extraction is
-duplicated in `format_short.label`, holistics `render.py`, `search.py`,
-and `usage-mix.py`; the decoder absorbs all four. The type collapse and
-the `injected` classification are new. Converting the UTC timestamp to
-`time_ns` is new and is where [timestamps-are-utc] stops recurring.
+Classification builds on `claude_code_archeology.provenance` (`typed`,
+`strip_harness_spans`) and `session.is_user_text`. Two rules came from the
+corpus rather than the design: queued prompts and typed slash commands
+decode as `user-text` ([queued-prompts]).
 
-Whether the decoded stream is cached beside each transcript is
-[cache-the-records-stream]. Home is
-`claude_code_archeology`, as a module plus a `claude-jsonl-records`
-console script.
+Text extraction is still duplicated in `format_short.label`, holistics
+`render.py`, `search.py`, and `usage-mix.py`; moving them onto this stream
+is [retirements]. The live `claude --print --output-format stream-json`
+feed has not been tried through the decoder. Whether the decoded stream is
+cached beside each transcript is [cache-the-records-stream].
 
 [records]: ../streams.kb/records.md
 [session-id-on-records]: ../discovered-constraints.kb/talk-records-carry-session-id.md
 [pre-line-numbers]: ../discovered-constraints.kb/pre-line-numbers-count-preprocessor-output.md
 [dash-slugs]: ../discovered-constraints.kb/project-slugs-begin-with-a-dash.md
-[timestamps-are-utc]: ../discovered-constraints.kb/timestamps-are-utc.md
+[queued-prompts]: ../discovered-constraints.kb/queued-prompts-exist-only-as-attachments.md
+[retirements]: ../retirements.kb/CLAUDE.md
 [cache-the-records-stream]: ../open-questions.kb/cache-the-records-stream.md

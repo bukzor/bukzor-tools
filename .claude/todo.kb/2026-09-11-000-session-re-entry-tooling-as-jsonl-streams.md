@@ -99,7 +99,7 @@ constrain it, are in the parts kb under `discovered-constraints.kb/`.
 
 Outcomes, not procedure. Each links to the part that specifies it.
 
-- [ ] A records stream exists: one decoded line per transcript record,
+- [x] A records stream exists: one decoded line per transcript record,
       flat, with `kind`, `session`, `uuid`, `time_ns`, collapsed `type`,
       and `text` ([records], [record-decoding])
 - [ ] A sessions stream is a `jq` reduce over records, and

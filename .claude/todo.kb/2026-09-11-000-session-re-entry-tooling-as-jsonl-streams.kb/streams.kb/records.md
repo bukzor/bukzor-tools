@@ -54,5 +54,12 @@ per-session count of the main thread filters on `sidechain`. `file` and
 addresses into the decoder's output, not identity. Identity is `uuid`; see
 [cite-by-uuid].
 
+[!DRAFT] 2026-09-23. Chosen by the builder, not ruled: queued prompts and
+typed slash commands are `user-text`; a peer session's relayed message in
+the main chain is `injected`, so `user-text` counts only what this
+session's person typed; a record with no timestamp borrows its session's
+neighbouring `time_ns`; an unknown raw kind is dropped with a warning
+rather than raised.
+
 [record-decoding]: ../stages.kb/record-decoding.md
 [cite-by-uuid]: ../open-questions.kb/cite-records-by-uuid-not-line.md

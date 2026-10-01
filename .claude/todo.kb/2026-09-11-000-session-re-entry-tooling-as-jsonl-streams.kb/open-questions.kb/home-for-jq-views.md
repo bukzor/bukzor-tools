@@ -4,29 +4,27 @@ Every command is `emitter | jq -f VIEW`, so the views need a home an
 agent can name from prose and `ls` to discover.
 
 Ruled: views live under `$XDG_CONFIG_HOME/claude-code-archeology/views/`,
-and the package's default views appear there as if symlinked in, literally
-or conceptually. [!@bukzor] 2026-10-01. One directory serves both readers:
-the user's own and edited views sit beside the defaults, under the
-configuration root every other tool already uses.
+and the package's default views appear there as symlinks. The set of views
+is computed, the directory is made to match it, and then what is literally
+on disk is used: new defaults get a link, a real file is an override and is
+never replaced, dead links are removed. [!@bukzor] 2026-10-01. One
+directory serves both readers -- shell lines name plain paths, `ls -l` shows
+defaults as links and overrides as files -- and no install step can fall
+behind the package.
 
-## Open: literal links or a lookup
+## Reconciling the directory
 
-Candidates:
+Refinements to the ruling. [!DRAFT] 2026-10-01.
 
-- Literal: an idempotent `claude-code-archeology-install` links each
-  default into the directory, never replacing a regular file (that is a
-  user override) and removing links whose target is gone. Shell lines
-  name a plain path; `ls -l` shows defaults as links and overrides as
-  files; the editable install makes an edited default live at once. A
-  default added later appears only after a re-run.
-  `bukzor-tmpwatch-install` already links package files into
-  `$XDG_CONFIG_HOME` this way.
-- Conceptual: a resolver searches the user directory, then the package's
-  defaults. No install step and new defaults appear at once, but every
-  shell line goes through the resolver, and `ls` of the directory shows
-  only overrides.
-
-Agent recommendation, 2026-10-01: literal. The ruling's point is a
-directory to `ls` and name in a shell line, and only literal links keep
-both; one directory also serves as a single `jq -L` root, if views come to
-share a module.
+- Ownership is by target, not by file type: a link is the package's when
+  its target path ends in `claude_code_archeology/views/<name>`. An
+  override may itself be a symlink (into a dotfiles repo, say), and a
+  foreign link is never touched, dead or alive.
+- An owned link is re-pointed when it does not aim at the current default,
+  and removed when its name is no longer a default. A dead-link rule alone
+  misses a link into an old install location that still exists.
+- The package's user-facing commands reconcile before running, and one
+  command does it alone for bare `jq -f` use. Stages never do: under
+  `rg --pre` the decoder runs once per file.
+- A link that already exists counts as success, so concurrent commands do
+  not race.

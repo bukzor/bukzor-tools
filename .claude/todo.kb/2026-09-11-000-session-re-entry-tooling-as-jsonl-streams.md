@@ -120,10 +120,12 @@ Outcomes, not procedure. Each links to the part that specifies it.
 
 ## Open Questions
 
-Three, each in [open-questions]: the envelope shape for stream lines,
-whether the records stream is cached per file, and whether `uuid` replaces
-`# L<n>` as the citation form in the holistics renders. Where the `jq`
-views live is ruled in the same collection.
+Five, each in [open-questions]: the envelope shape for stream lines,
+whether the records stream is cached per file, whether `uuid` replaces
+`# L<n>` as the citation form in the holistics renders, whether one
+command yields the records for a time span, and where the stream contracts
+live once this task closes. Where the `jq` views live is ruled in the same
+collection.
 
 ## Success Criteria
 

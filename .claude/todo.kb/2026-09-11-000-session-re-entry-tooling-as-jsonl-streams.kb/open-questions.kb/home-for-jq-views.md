@@ -28,14 +28,18 @@ because they change together:
 - `include` does not re-export: a module that includes others leaves their
   names undefined for whoever includes it, so one umbrella module cannot
   stand in for the directory.
-- `claude-jq` therefore lists the `*.jq` names in both directories and
-  prepends one `include "<name>";` for each, then `exec`s `jq -L <user>
-  -L <package>`. The first directory holding a name wins. A user's
+- `claude-jq` therefore prepends one `include "<name>";` for each view
+  name the program text mentions as a word, then `exec`s `jq -L <user>
+  -L <package>`. Naming only the views a program mentions follows from
+  `jq` compiling every module it includes: a half-written file in the
+  user directory then fails only programs that name it. Not measured.
+  The first directory holding a name wins. A user's
   `sessions.jq` replaces the default for a top-level call and for every
   default view that includes it.
 - The program is `claude-jq`'s first argument and `jq` options follow it,
   so the wrapper never has to tell a program from an option's value.
 - The prelude goes on its own line so columns in `jq` errors stay the
   program's; line numbers are one high.
-- `ls` of the user directory shows only overrides. `claude-jq` may list
-  every view and the directory it came from when that is wanted.
+- `ls` of the user directory shows only overrides, so `claude-jq` with no
+  arguments lists every view: name, one-line summary, input form, and the
+  directory it came from.

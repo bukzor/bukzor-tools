@@ -48,3 +48,16 @@ a subtraction the owner may or may not want; none is a defect.
 - [ ] [todo.kb/2026-09-11-000-session-re-entry-tooling-as-jsonl-streams.md](todo.kb/2026-09-11-000-session-re-entry-tooling-as-jsonl-streams.md)
       -- five jsonl emitters plus jq views replace four transcript decoders
       and two task listers; parts enumerated in the sibling `.kb/`
+- [ ] `claude-inventory` can't answer "which sessions did the crash kill,
+      and which are worth resuming" -- the 2026-09-23 tmux-crash triage
+      (session `452afeb3`) needed an ad-hoc script for three things it lacks
+      (`2026-05-19--task-archeology/trash/crash-triage-2026-09-23.py`):
+  - [ ] Mark live sessions: `~/.claude/sessions/<pid>.json` maps a pid to a
+        `sessionId`, and `/proc/<pid>` says whether it still runs. Without
+        this, `--sh` hands back already-resumed sessions as resume commands.
+  - [ ] Show resume cost: context at the tip, i.e. the last assistant
+        record's `input_tokens` + both `cache_*_input_tokens` on the tip
+        chain. It ranged 26k-465k across that one cohort.
+  - [ ] Flag an unanswered tip (the last genuine user prompt has no reply),
+        filtering task notifications and peer messages. Two of the 26 dead
+        sessions held one; neither showed in the label column.

@@ -120,8 +120,10 @@ Outcomes, not procedure. Each links to the part that specifies it.
 
 ## Open Questions
 
-Four, each in [open-questions]: the envelope shape for stream lines, where
-the `jq` view files live, whether the records stream is cached per file,
+Four, each in [open-questions]: the envelope shape for stream lines,
+whether the default `jq` views are linked into
+`$XDG_CONFIG_HOME/claude-code-archeology/views/` or found by lookup (the
+directory itself is ruled), whether the records stream is cached per file,
 and whether `uuid` replaces `# L<n>` as the citation form in the holistics
 renders.
 

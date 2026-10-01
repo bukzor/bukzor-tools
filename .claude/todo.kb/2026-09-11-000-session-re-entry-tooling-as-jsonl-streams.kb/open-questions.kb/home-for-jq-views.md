@@ -21,7 +21,10 @@ because they change together:
 [!DRAFT] 2026-10-01. Measured on jq 1.8.2 in session 32e41eca.
 
 - `jq` has no option to prepend an `include`. Its only prelude is
-  `$HOME/.jq`, one file under the real home directory.
+  `$HOME/.jq`, one file under the real home directory, and it brings plain
+  definitions into scope but not the names of anything it `include`s.
+  `-L` takes only a directory: given a file, `jq` accepts it silently and
+  defines nothing.
 - `include` does not re-export: a module that includes others leaves their
   names undefined for whoever includes it, so one umbrella module cannot
   stand in for the directory.

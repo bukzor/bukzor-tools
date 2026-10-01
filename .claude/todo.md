@@ -48,6 +48,20 @@ a subtraction the owner may or may not want; none is a defect.
 - [ ] [todo.kb/2026-09-11-000-session-re-entry-tooling-as-jsonl-streams.md](todo.kb/2026-09-11-000-session-re-entry-tooling-as-jsonl-streams.md)
       -- five jsonl emitters plus jq views replace four transcript decoders
       and two task listers; parts enumerated in the sibling `.kb/`
+  - [x] Records stream: `claude-jsonl-records` (`80f5051`)
+  - [ ] `claude-jq` wrapper and `sessions.jq`, built together since the
+        wrapper needs a view to run (`commands.kb/claude-jq.md`,
+        `stages.kb/session-reduction.md`; about 1.5 h)
+  - [ ] Inventory view over the sessions stream (about 1 h)
+  - [ ] Owner rulings in `open-questions.kb/`: entry command, contracts
+        home, envelope shape, caching, uuid citation. None blocks the two
+        items above
+  - [ ] `llm-sessions uncovered` (about 0.5 h)
+  - [ ] `git-fleet` and checkbox extraction, then the two `~/bin` task
+        listers read them (about 3 h)
+  - [ ] Cleanup: retire the duplicate decoders and recency rule, swap the
+        survey's prune list for an `rg` ignore file, time humanizer, and
+        try the live `claude --print` feed through the decoder
 - [ ] `claude-inventory` can't answer "which sessions did the crash kill,
       and which are worth resuming" -- the 2026-09-23 tmux-crash triage
       (session `452afeb3`) needed an ad-hoc script for three things it lacks

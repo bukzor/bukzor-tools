@@ -32,5 +32,5 @@ Steps one and two answer "done" by intent and by fact. Step three answers
 Five and six are escalation. "What next" stays a conversation; no command
 here changes that.
 
-Every step is `selection | stage | jq -f view`, and the views share two
+Every step is `selection | stage | claude-jq view`, and the views share two
 join keys: session id and path. Nothing here is a pipeline of its own.

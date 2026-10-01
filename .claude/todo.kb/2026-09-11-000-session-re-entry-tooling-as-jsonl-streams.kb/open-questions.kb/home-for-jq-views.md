@@ -1,30 +1,38 @@
 # Where the jq view files live
 
-Every command is `emitter | jq -f VIEW`, so the views need a home an
-agent can name from prose and `ls` to discover.
+Every question is `emitter | claude-jq PROGRAM`, so the views need a home
+an agent can name from prose and `ls` to discover.
 
-Ruled: views live under `$XDG_CONFIG_HOME/claude-code-archeology/views/`,
-and the package's default views appear there as symlinks. The set of views
-is computed, the directory is made to match it, and then what is literally
-on disk is used: new defaults get a link, a real file is an override and is
-never replaced, dead links are removed. [!@bukzor] 2026-10-01. One
-directory serves both readers -- shell lines name plain paths, `ls -l` shows
-defaults as links and overrides as files -- and no install step can fall
-behind the package.
+Ruled: a view is a `jq` module, one `.jq` file defining one filter of the
+same name. Views are found by search path, user directory first, then the
+package's defaults, and nothing is ever linked, synced, or written.
+[!@bukzor] 2026-10-01. The three parts of the machinery share one name
+because they change together:
 
-## Reconciling the directory
+- `$XDG_CONFIG_HOME/claude-code-archeology/jq/` holds the user's views; a
+  file named like a default replaces it.
+- `claude_code_archeology/jq/` in the package holds the defaults.
+- `claude-jq` is `jq` with those two directories on its library path and
+  every view already in scope, so a view is called by its bare name:
+  `claude-jsonl-records | claude-jq 'sessions' -s`.
 
-Refinements to the ruling. [!DRAFT] 2026-10-01.
+## Mechanism
 
-- Ownership is by target, not by file type: a link is the package's when
-  its target path ends in `claude_code_archeology/views/<name>`. An
-  override may itself be a symlink (into a dotfiles repo, say), and a
-  foreign link is never touched, dead or alive.
-- An owned link is re-pointed when it does not aim at the current default,
-  and removed when its name is no longer a default. A dead-link rule alone
-  misses a link into an old install location that still exists.
-- The package's user-facing commands reconcile before running, and one
-  command does it alone for bare `jq -f` use. Stages never do: under
-  `rg --pre` the decoder runs once per file.
-- A link that already exists counts as success, so concurrent commands do
-  not race.
+[!DRAFT] 2026-10-01. Measured on jq 1.8.2 in session 32e41eca.
+
+- `jq` has no option to prepend an `include`. Its only prelude is
+  `$HOME/.jq`, one file under the real home directory.
+- `include` does not re-export: a module that includes others leaves their
+  names undefined for whoever includes it, so one umbrella module cannot
+  stand in for the directory.
+- `claude-jq` therefore lists the `*.jq` names in both directories and
+  prepends one `include "<name>";` for each, then `exec`s `jq -L <user>
+  -L <package>`. The first directory holding a name wins. A user's
+  `sessions.jq` replaces the default for a top-level call and for every
+  default view that includes it.
+- The program is `claude-jq`'s first argument and `jq` options follow it,
+  so the wrapper never has to tell a program from an option's value.
+- The prelude goes on its own line so columns in `jq` errors stay the
+  program's; line numbers are one high.
+- `ls` of the user directory shows only overrides. `claude-jq` may list
+  every view and the directory it came from when that is wanted.
